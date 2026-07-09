@@ -1,0 +1,66 @@
+### List playlists
+GET http://localhost:8080/api/playlists
+
+### Search public playlists
+GET http://localhost:8080/api/playlists?search=focus&type=public
+
+### List playlists created by a listener
+GET http://localhost:8080/api/playlists?creatorId=1
+
+### List playlists where a listener is a member
+GET http://localhost:8080/api/playlists?memberId=3
+
+### Get playlist details
+GET http://localhost:8080/api/playlists/1
+
+### Create playlist
+POST http://localhost:8080/api/playlists
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+Content-Type: application/json
+
+{
+  "name": "Late Night Finds",
+  "type": "private",
+  "playlistUrl": "https://musicapp.com/playlist/late-night-finds",
+  "pictureUrl": null
+}
+
+### Update playlist
+PUT http://localhost:8080/api/playlists/6
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+Content-Type: application/json
+
+{
+  "name": "My Favorites",
+  "type": "private",
+  "playlistUrl": "https://musicapp.com/playlist/6-my-favorites",
+  "pictureUrl": null
+}
+
+### Delete playlist
+DELETE http://localhost:8080/api/playlists/6
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Join playlist
+PUT http://localhost:8080/api/playlists/1/members/me
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Leave playlist
+DELETE http://localhost:8080/api/playlists/1/members/me
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Add song to playlist
+PUT http://localhost:8080/api/playlists/1/songs/10
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Remove song from playlist
+DELETE http://localhost:8080/api/playlists/1/songs/10
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Vote for playlist song
+PUT http://localhost:8080/api/playlists/1/songs/9/vote
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Remove playlist song vote
+DELETE http://localhost:8080/api/playlists/1/songs/9/vote
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
