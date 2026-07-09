@@ -1,0 +1,101 @@
+### Login with a seed user first if your HTTP client supports shared auth manually
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "musiclover42",
+  "password": "password123"
+}
+
+### Get current listener state for a song
+GET http://localhost:8080/api/listener/me/songs/1
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Stream a song
+POST http://localhost:8080/api/listener/me/songs/1/stream
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Skip a song
+POST http://localhost:8080/api/listener/me/songs/1/skip
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Like a song
+PUT http://localhost:8080/api/listener/me/songs/1/attitude
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+Content-Type: application/json
+
+{
+  "attitude": "like"
+}
+
+### Dislike a song
+PUT http://localhost:8080/api/listener/me/songs/1/attitude
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+Content-Type: application/json
+
+{
+  "attitude": "dislike"
+}
+
+### Mark a song not interested
+PUT http://localhost:8080/api/listener/me/songs/1/attitude
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+Content-Type: application/json
+
+{
+  "attitude": "not_interested"
+}
+
+### Clear song attitude
+DELETE http://localhost:8080/api/listener/me/songs/1/attitude
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Block a song
+PUT http://localhost:8080/api/listener/me/songs/11/block
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Unblock a song
+DELETE http://localhost:8080/api/listener/me/songs/11/block
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Get current listener state for a performer
+GET http://localhost:8080/api/listener/me/performers/1
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Follow a performer
+PUT http://localhost:8080/api/listener/me/performers/1/follow
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Unfollow a performer
+DELETE http://localhost:8080/api/listener/me/performers/1/follow
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Like a performer
+PUT http://localhost:8080/api/listener/me/performers/1/attitude
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+Content-Type: application/json
+
+{
+  "attitude": "like"
+}
+
+### Dislike a performer
+PUT http://localhost:8080/api/listener/me/performers/1/attitude
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+Content-Type: application/json
+
+{
+  "attitude": "dislike"
+}
+
+### Clear performer attitude
+DELETE http://localhost:8080/api/listener/me/performers/1/attitude
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Block a performer
+PUT http://localhost:8080/api/listener/me/performers/4/block
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Unblock a performer
+DELETE http://localhost:8080/api/listener/me/performers/4/block
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
