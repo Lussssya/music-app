@@ -1,0 +1,7 @@
+### Get recommendations for the authenticated listener
+GET http://localhost:8080/api/recommendations
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Limit recommendations
+GET http://localhost:8080/api/recommendations?limit=3
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
