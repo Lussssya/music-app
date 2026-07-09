@@ -1,0 +1,24 @@
+### Health check
+GET http://localhost:8080/actuator/health
+
+### Login with a seed user
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "musiclover42",
+  "password": "password123"
+}
+
+### Register a new listener
+POST http://localhost:8080/api/auth/register
+Content-Type: application/json
+
+{
+  "username": "new_listener_{{$timestamp}}",
+  "emailAddress": "new.listener.{{$timestamp}}@example.com",
+  "password": "password123",
+  "gender": "Female",
+  "dateOfBirth": "1999-01-01",
+  "countryName": "United States"
+}
