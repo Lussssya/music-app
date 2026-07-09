@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: music-app
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/music_app}
+    username: ${SPRING_DATASOURCE_USERNAME:music_app}
+    password: ${SPRING_DATASOURCE_PASSWORD:music_app}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+server:
+  port: ${SERVER_PORT:8080}

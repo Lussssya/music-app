@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: music-app-postgres
+    environment:
+      POSTGRES_DB: music_app
+      POSTGRES_USER: music_app
+      POSTGRES_PASSWORD: music_app
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-data:
