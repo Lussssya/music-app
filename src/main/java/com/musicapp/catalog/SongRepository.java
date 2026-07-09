@@ -1,0 +1,29 @@
+package com.musicapp.catalog;
+
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.List;
+
+public interface SongRepository extends JpaRepository<Song, Long> {
+    @EntityGraph(attributePaths = {"mainPerformer", "album", "genres"})
+    @Query("""
+            SELECT DISTINCT s
+            FROM Song s
+            LEFT JOIN s.genres g
+            WHERE (:search = '' OR LOWER(s.title) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (:performerId IS NULL OR s.mainPerformer.id = :performerId)
+              AND (:genreName = '' OR g.name = :genreName)
+            ORDER BY s.releaseDate DESC, s.title
+            """)
+    List<Song> findCatalog (
+            @Param("search") String search,
+            @Param("performerId") Long performerId,
+            @Param("genreName") String genreName
+    );
+
+    @EntityGraph(attributePaths = {"mainPerformer", "album", "genres"})
+    List<Song> findByMainPerformerIdOrderByReleaseDateDescTitle (Long performerId);
+}

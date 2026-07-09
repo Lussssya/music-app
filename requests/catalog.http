@@ -1,0 +1,41 @@
+### List genres
+GET http://localhost:8080/api/genres
+
+### List performers
+GET http://localhost:8080/api/performers
+
+### Search performers
+GET http://localhost:8080/api/performers?search=aurora
+
+### Get performer details
+GET http://localhost:8080/api/performers/1
+
+### List albums
+GET http://localhost:8080/api/albums
+
+### List albums by performer
+GET http://localhost:8080/api/albums?performerId=1
+
+### Get album details
+GET http://localhost:8080/api/albums/1
+
+### List songs
+GET http://localhost:8080/api/songs
+
+### Search songs
+GET http://localhost:8080/api/songs?search=love
+
+### List songs by genre
+GET http://localhost:8080/api/songs?genreName=Pop
+
+### List songs by performer
+GET http://localhost:8080/api/songs?performerId=1
+
+### Get song details
+GET http://localhost:8080/api/songs/1
+
+### Nested performer catalog
+GET http://localhost:8080/api/performers/1/albums
+
+### Nested performer songs
+GET http://localhost:8080/api/performers/1/songs
