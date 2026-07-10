@@ -1,5 +1,6 @@
-package com.musicapp.catalog;
+package com.musicapp;
 
+import com.musicapp.catalog.*;
 import com.musicapp.catalog.dto.AlbumResponse;
 import com.musicapp.catalog.dto.AlbumSummary;
 import com.musicapp.catalog.dto.GenreResponse;

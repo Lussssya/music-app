@@ -1,7 +1,10 @@
-package com.musicapp.playlist;
+package com.musicapp;
 
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.musicapp.common.GlobalExceptionHandler;
+import com.musicapp.playlist.PlaylistController;
+import com.musicapp.playlist.PlaylistService;
+import com.musicapp.playlist.PlaylistType;
 import com.musicapp.playlist.dto.CreatePlaylistRequest;
 import com.musicapp.playlist.dto.PlaylistMemberResponse;
 import com.musicapp.playlist.dto.PlaylistResponse;
@@ -12,6 +15,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -72,7 +76,7 @@ class PlaylistControllerTest {
                 .andExpect(jsonPath("$[0].songCount").value(2));
 
         assertThat(playlistService.search).isEqualTo("focus");
-        assertThat(playlistService.type).isEqualTo(PlaylistType.PUBLIC);
+        Assertions.assertThat(playlistService.type).isEqualTo(PlaylistType.PUBLIC);
         assertThat(playlistService.creatorId).isEqualTo(12L);
         assertThat(playlistService.memberId).isEqualTo(5L);
     }

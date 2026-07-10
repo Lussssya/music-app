@@ -1,5 +1,6 @@
-package com.musicapp.auth;
+package com.musicapp;
 
+import com.musicapp.auth.*;
 import com.musicapp.common.BadRequestException;
 import com.musicapp.common.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;

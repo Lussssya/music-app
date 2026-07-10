@@ -1,8 +1,9 @@
-package com.musicapp.recommendation;
+package com.musicapp;
 
 import com.musicapp.common.BadRequestException;
 import com.musicapp.listener.Listener;
 import com.musicapp.listener.ListenerRepository;
+import com.musicapp.recommendation.RecommendationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcOperations;
 import org.springframework.test.util.ReflectionTestUtils;

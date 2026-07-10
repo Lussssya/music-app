@@ -1,7 +1,10 @@
-package com.musicapp.listener;
+package com.musicapp;
 
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.musicapp.common.GlobalExceptionHandler;
+import com.musicapp.listener.ListenerActionController;
+import com.musicapp.listener.ListenerActionService;
+import com.musicapp.listener.ListenerAttitude;
 import com.musicapp.listener.dto.PerformerActionResponse;
 import com.musicapp.listener.dto.SongActionResponse;
 import jakarta.servlet.FilterChain;

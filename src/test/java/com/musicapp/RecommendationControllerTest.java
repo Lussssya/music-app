@@ -1,10 +1,12 @@
-package com.musicapp.recommendation;
+package com.musicapp;
 
 import com.musicapp.catalog.dto.AlbumSummary;
 import com.musicapp.catalog.dto.PerformerSummary;
 import com.musicapp.catalog.dto.SongResponse;
 import com.musicapp.common.BadRequestException;
 import com.musicapp.common.GlobalExceptionHandler;
+import com.musicapp.recommendation.RecommendationController;
+import com.musicapp.recommendation.RecommendationService;
 import com.musicapp.recommendation.dto.RecommendationResponse;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import jakarta.servlet.FilterChain;
