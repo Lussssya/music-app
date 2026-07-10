@@ -30,6 +30,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,6 +51,11 @@ class RecommendationControllerTest {
     @Test
     void recommendationsRequireAuthentication () throws Exception {
         mockMvc.perform(get("/api/recommendations")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void rebuildRecommendationsRequireAuthentication () throws Exception {
+        mockMvc.perform(post("/api/recommendations/rebuild")).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -82,6 +88,20 @@ class RecommendationControllerTest {
 
         assertThat(recommendationService.username).isEqualTo("musiclover42");
         assertThat(recommendationService.limit).isEqualTo(20);
+    }
+
+    @Test
+    void rebuildRecommendationsReturnResponseShape () throws Exception {
+        recommendationService.rebuildResponse = List.of(recommendation());
+
+        mockMvc.perform(post("/api/recommendations/rebuild?limit=2").principal(authentication()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].score").value(162.5))
+                .andExpect(jsonPath("$[0].song.songId").value(3))
+                .andExpect(jsonPath("$[0].song.title").value("Midnight Sun"));
+
+        assertThat(recommendationService.rebuildUsername).isEqualTo("musiclover42");
+        assertThat(recommendationService.rebuildLimit).isEqualTo(2);
     }
 
     @Test
@@ -120,9 +140,12 @@ class RecommendationControllerTest {
 
     private static class FakeRecommendationService extends RecommendationService {
         private List<RecommendationResponse> response = List.of();
+        private List<RecommendationResponse> rebuildResponse = List.of();
         private RuntimeException exception;
         private String username;
         private int limit;
+        private String rebuildUsername;
+        private int rebuildLimit;
 
         FakeRecommendationService () {
             super(null, null);
@@ -136,6 +159,16 @@ class RecommendationControllerTest {
                 throw exception;
             }
             return response;
+        }
+
+        @Override
+        public List<RecommendationResponse> rebuildRecommendations (String username, int limit) {
+            this.rebuildUsername = username;
+            this.rebuildLimit = limit;
+            if (exception != null) {
+                throw exception;
+            }
+            return rebuildResponse;
         }
     }
 

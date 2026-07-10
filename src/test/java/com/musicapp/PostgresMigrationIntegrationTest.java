@@ -1,18 +1,26 @@
 package com.musicapp;
 
+import com.musicapp.listener.Listener;
+import com.musicapp.listener.ListenerRepository;
+import com.musicapp.recommendation.RecommendationService;
+import com.musicapp.recommendation.dto.RecommendationResponse;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import javax.sql.DataSource;
 import java.math.BigDecimal;
+import java.lang.reflect.Proxy;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -167,6 +175,101 @@ class PostgresMigrationIntegrationTest {
         assertThat(recommendations).extracting(RecommendedSong::songId).contains(3L, 4L, 10L, 17L, 18L);
     }
 
+    @Test
+    void rebuildRecommendationsUsesMigratedPostgresSchema () {
+        final RecommendationService recommendationService = new RecommendationService(listenerRepository(2L), jdbcTemplate);
+        final List<RecommendationResponse> recommendations = recommendationService.rebuildRecommendations("rockfan88", 5);
+
+        assertThat(recommendations).hasSize(5);
+        assertThat(recommendations).extracting(RecommendationResponse::score).isSortedAccordingTo((left, right) -> right.compareTo(left));
+        assertThat(recommendations).extracting(recommendation -> recommendation.song().songId()).doesNotContain(5L, 6L, 11L, 19L, 21L, 28L, 29L);
+    }
+
+    @Test
+    void likesAndFollowsIncreaseRecommendationScore () {
+        final TestListener listener = createListener("scoring_like_follow");
+        jdbcTemplate.update("""
+                INSERT INTO listener_genre_priority (listener_id, genre_name, priority_score)
+                VALUES (?, ?, ?)
+                """, listener.id(), "Pop", new BigDecimal("10.0000"));
+
+        final RecommendationService recommendationService = recommendationService(listener);
+        final BigDecimal baseScore = scoreFor(recommendationService.rebuildRecommendations(listener.username(), 100), 3L);
+
+        jdbcTemplate.update("""
+                INSERT INTO listener_following_performer (listener_id, performer_id)
+                VALUES (?, ?)
+                """, listener.id(), 1L);
+
+        final BigDecimal followedScore = scoreFor(recommendationService.rebuildRecommendations(listener.username(), 100), 3L);
+
+        jdbcTemplate.update("""
+                INSERT INTO listener_song_activity (listener_id, song_id, stream_count, skip_count, attitude)
+                VALUES (?, ?, 0, 0, ?::attitude)
+                """, listener.id(), 1L, "like");
+
+        final BigDecimal likedScore = scoreFor(recommendationService.rebuildRecommendations(listener.username(), 100), 3L);
+
+        assertThat(followedScore).isGreaterThan(baseScore);
+        assertThat(likedScore).isGreaterThan(followedScore);
+    }
+
+    @Test
+    void dislikesSuppressSimilarRecommendations () {
+        final TestListener listener = createListener("scoring_dislike");
+        jdbcTemplate.update("""
+                INSERT INTO listener_genre_priority (listener_id, genre_name, priority_score)
+                VALUES (?, ?, ?)
+                """, listener.id(), "Rock", new BigDecimal("10.0000"));
+        jdbcTemplate.update("""
+                INSERT INTO listener_song_activity (listener_id, song_id, stream_count, skip_count, attitude)
+                VALUES (?, ?, 0, 0, ?::attitude)
+                """, listener.id(), 1L, "dislike");
+
+        final List<RecommendationResponse> recommendations = recommendationService(listener).rebuildRecommendations(listener.username(), 100);
+
+        assertThat(recommendations).isNotEmpty();
+        assertThat(recommendations).extracting(recommendation -> recommendation.song().songId()).doesNotContain(3L, 4L);
+    }
+
+    @Test
+    void genrePriorityAffectsRecommendationRanking () {
+        final TestListener listener = createListener("scoring_genre_priority");
+        jdbcTemplate.update("""
+                INSERT INTO listener_genre_priority (listener_id, genre_name, priority_score)
+                VALUES (?, ?, ?),
+                       (?, ?, ?)
+                """, listener.id(), "Rock", new BigDecimal("100.0000"), listener.id(), "Pop", new BigDecimal("10.0000"));
+
+        final List<RecommendationResponse> recommendations = recommendationService(listener).rebuildRecommendations(listener.username(), 100);
+
+        assertThat(scoreFor(recommendations, 5L)).isGreaterThan(scoreFor(recommendations, 3L));
+    }
+
+    @Test
+    void blockedSongsAndPerformersNeverAppearInRecommendations () {
+        final TestListener listener = createListener("scoring_blocks");
+        jdbcTemplate.update("""
+                INSERT INTO listener_genre_priority (listener_id, genre_name, priority_score)
+                VALUES (?, ?, ?)
+                """, listener.id(), "Rock", new BigDecimal("100.0000"));
+        jdbcTemplate.update("""
+                INSERT INTO blocked_song (listener_id, song_id)
+                VALUES (?, ?)
+                """, listener.id(), 15L);
+        jdbcTemplate.update("""
+                INSERT INTO blocked_performer (listener_id, performer_id)
+                VALUES (?, ?)
+                """, listener.id(), 2L);
+
+        final List<RecommendationResponse> recommendations = recommendationService(listener).rebuildRecommendations(listener.username(), 100);
+
+        assertThat(recommendations).isNotEmpty();
+        assertThat(recommendations)
+                .extracting(recommendation -> recommendation.song().songId())
+                .doesNotContain(5L, 6L, 7L, 8L, 15L);
+    }
+
     private static DataSource dataSource () {
         final DriverManagerDataSource dataSource = new DriverManagerDataSource();
         dataSource.setDriverClassName(POSTGRES.getDriverClassName());
@@ -174,6 +277,69 @@ class PostgresMigrationIntegrationTest {
         dataSource.setUsername(POSTGRES.getUsername());
         dataSource.setPassword(POSTGRES.getPassword());
         return dataSource;
+    }
+
+    private TestListener createListener (String usernamePrefix) {
+        final String username = usernamePrefix + "_" + System.nanoTime();
+        final Long listenerId = jdbcTemplate.queryForObject("""
+                INSERT INTO listener (
+                    username,
+                    email_address,
+                    password_hash,
+                    gender,
+                    date_of_birth,
+                    country_name
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                RETURNING listener_id
+                """, Long.class, username, username + "@example.com", "password-hash", "Female", "1999-01-01", "United States");
+
+        return new TestListener(listenerId, username);
+    }
+
+    private RecommendationService recommendationService (TestListener listener) {
+        return new RecommendationService(listenerRepository(listener.id(), listener.username()), jdbcTemplate);
+    }
+
+    private BigDecimal scoreFor (List<RecommendationResponse> recommendations, Long songId) {
+        return recommendations.stream()
+                .filter(recommendation -> recommendation.song().songId().equals(songId))
+                .findFirst()
+                .map(RecommendationResponse::score)
+                .orElseThrow();
+    }
+
+    private ListenerRepository listenerRepository (Long listenerId) {
+        return listenerRepository(listenerId, "rockfan88");
+    }
+
+    private ListenerRepository listenerRepository (Long listenerId, String username) {
+        final Listener listener = Listener.register(
+                username,
+                username + "@example.com",
+                "password-hash",
+                "Male",
+                LocalDate.of(1992, 6, 10),
+                "United States"
+        );
+        ReflectionTestUtils.setField(listener, "id", listenerId);
+
+        return (ListenerRepository) Proxy.newProxyInstance(
+                ListenerRepository.class.getClassLoader(),
+                new Class<?>[]{ListenerRepository.class},
+                (proxy, method, args) -> {
+                    if (method.getName().equals("findByUsername")) {
+                        return Optional.of(listener);
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                }
+        );
+    }
+
+    private record TestListener(
+            Long id,
+            String username
+    ) {
     }
 
     private record PlaylistVoteTotal(

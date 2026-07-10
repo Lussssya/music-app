@@ -34,7 +34,166 @@ public class RecommendationService {
     public List<RecommendationResponse> getRecommendations (String username, int limit) {
         final Long listenerId = requireListenerId(username);
         final int normalizedLimit = normalizeLimit(limit);
+        return findRecommendations(listenerId, normalizedLimit);
+    }
 
+    @Transactional
+    public List<RecommendationResponse> rebuildRecommendations (String username, int limit) {
+        final Long listenerId = requireListenerId(username);
+        final int normalizedLimit = normalizeLimit(limit);
+
+        jdbcTemplate.update("""
+                DELETE FROM listener_recommendation
+                WHERE listener_id = ?
+                """, listenerId);
+
+        jdbcTemplate.update("""
+                WITH selected_listener AS (
+                    SELECT ?::bigint AS listener_id
+                ),
+                genre_signal AS (
+                    SELECT
+                        sg.genre_name,
+                        SUM(
+                            lsa.stream_count * 1.5
+                            - lsa.skip_count * 3.0
+                            + CASE lsa.attitude::text
+                                WHEN 'like' THEN 35
+                                WHEN 'dislike' THEN -25
+                                WHEN 'not_interested' THEN -40
+                                ELSE 0
+                              END
+                        ) AS score
+                    FROM selected_listener selected
+                    JOIN listener_song_activity lsa
+                        ON lsa.listener_id = selected.listener_id
+                    JOIN song_genre sg
+                        ON sg.song_id = lsa.song_id
+                    GROUP BY sg.genre_name
+                ),
+                performer_signal AS (
+                    SELECT
+                        ps.performer_id,
+                        SUM(
+                            lsa.stream_count * 2.0
+                            - lsa.skip_count * 4.0
+                            + CASE lsa.attitude::text
+                                WHEN 'like' THEN 45
+                                WHEN 'dislike' THEN -45
+                                WHEN 'not_interested' THEN -65
+                                ELSE 0
+                              END
+                        ) AS score
+                    FROM selected_listener selected
+                    JOIN listener_song_activity lsa
+                        ON lsa.listener_id = selected.listener_id
+                    JOIN performer_song ps
+                        ON ps.song_id = lsa.song_id
+                    GROUP BY ps.performer_id
+                ),
+                song_genre_score AS (
+                    SELECT
+                        s.song_id,
+                        SUM(
+                            COALESCE(lgp.priority_score, 0) * 0.7
+                            + CASE WHEN lpg.genre_name IS NULL THEN 0 ELSE 20 END
+                            + COALESCE(gs.score, 0) * 0.2
+                        ) AS score
+                    FROM selected_listener selected
+                    CROSS JOIN song s
+                    LEFT JOIN song_genre sg
+                        ON sg.song_id = s.song_id
+                    LEFT JOIN listener_genre_priority lgp
+                        ON lgp.listener_id = selected.listener_id
+                       AND lgp.genre_name = sg.genre_name
+                    LEFT JOIN listener_preferred_genre lpg
+                        ON lpg.listener_id = selected.listener_id
+                       AND lpg.genre_name = sg.genre_name
+                    LEFT JOIN genre_signal gs
+                        ON gs.genre_name = sg.genre_name
+                    GROUP BY s.song_id
+                ),
+                song_performer_score AS (
+                    SELECT
+                        ps.song_id,
+                        SUM(
+                            CASE WHEN lfp.performer_id IS NULL THEN 0 ELSE 50 END
+                            + CASE lpa.attitude::text
+                                WHEN 'like' THEN 45
+                                WHEN 'dislike' THEN -55
+                                WHEN 'not_interested' THEN -75
+                                ELSE 0
+                              END
+                            + COALESCE(psig.score, 0) * 0.25
+                        ) AS score
+                    FROM selected_listener selected
+                    CROSS JOIN performer_song ps
+                    LEFT JOIN listener_following_performer lfp
+                        ON lfp.listener_id = selected.listener_id
+                       AND lfp.performer_id = ps.performer_id
+                    LEFT JOIN listener_performer_attitude lpa
+                        ON lpa.listener_id = selected.listener_id
+                       AND lpa.performer_id = ps.performer_id
+                    LEFT JOIN performer_signal psig
+                        ON psig.performer_id = ps.performer_id
+                    GROUP BY ps.song_id
+                ),
+                candidate_score AS (
+                    SELECT
+                        s.song_id,
+                        COALESCE(sgs.score, 0) + COALESCE(sps.score, 0) AS score
+                    FROM selected_listener selected
+                    CROSS JOIN song s
+                    LEFT JOIN song_genre_score sgs
+                        ON sgs.song_id = s.song_id
+                    LEFT JOIN song_performer_score sps
+                        ON sps.song_id = s.song_id
+                    WHERE NOT EXISTS (
+                            SELECT 1
+                            FROM listener_song_activity lsa
+                            WHERE lsa.listener_id = selected.listener_id
+                              AND lsa.song_id = s.song_id
+                        )
+                      AND NOT EXISTS (
+                            SELECT 1
+                            FROM blocked_song bs
+                            WHERE bs.listener_id = selected.listener_id
+                              AND bs.song_id = s.song_id
+                        )
+                      AND NOT EXISTS (
+                            SELECT 1
+                            FROM blocked_performer bp
+                            JOIN performer_song blocked_song_performer
+                                ON blocked_song_performer.performer_id = bp.performer_id
+                            WHERE bp.listener_id = selected.listener_id
+                              AND blocked_song_performer.song_id = s.song_id
+                        )
+                )
+                INSERT INTO listener_recommendation (listener_id, song_id, recommendation_score, generated_at)
+                SELECT
+                    selected.listener_id,
+                    candidate.song_id,
+                    ROUND(candidate.score::numeric, 4),
+                    CURRENT_TIMESTAMP
+                FROM selected_listener selected
+                JOIN candidate_score candidate
+                    ON candidate.score > 0
+                ON CONFLICT (listener_id, song_id) DO UPDATE SET
+                    recommendation_score = EXCLUDED.recommendation_score,
+                    generated_at = EXCLUDED.generated_at
+                """, listenerId);
+
+        return findRecommendations(listenerId, normalizedLimit);
+    }
+
+    private int normalizeLimit (int limit) {
+        if (limit < 1) {
+            throw new BadRequestException("Recommendation limit must be at least 1.");
+        }
+        return Math.min(limit, MAX_LIMIT);
+    }
+
+    private List<RecommendationResponse> findRecommendations (Long listenerId, int limit) {
         return jdbcTemplate.query("""
                 SELECT
                     lr.recommendation_score,
@@ -61,20 +220,13 @@ public class RecommendationService {
                          s.song_id, p.performer_id, a.album_id
                 ORDER BY lr.recommendation_score DESC, lr.generated_at DESC, s.title
                 LIMIT ?
-                """, this::mapRecommendation, listenerId, normalizedLimit);
+                """, this::mapRecommendation, listenerId, limit);
     }
 
     private Long requireListenerId (String username) {
         return listenerRepository.findByUsername(username)
                 .map(Listener::getId)
                 .orElseThrow(() -> new NotFoundException("Listener not found: " + username));
-    }
-
-    private int normalizeLimit (int limit) {
-        if (limit < 1) {
-            throw new BadRequestException("Recommendation limit must be at least 1.");
-        }
-        return Math.min(limit, MAX_LIMIT);
     }
 
     private RecommendationResponse mapRecommendation (ResultSet rs, int rowNum) throws SQLException {

@@ -10,6 +10,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Proxy;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -57,6 +58,29 @@ class RecommendationServiceTest {
         assertThat(jdbcOperations.queryCount).isZero();
     }
 
+    @Test
+    void rebuildRecommendationsUsesListenerSignalsAndBlockedFilters () {
+        final CapturingJdbcOperations jdbcOperations = new CapturingJdbcOperations();
+        final RecommendationService recommendationService = new RecommendationService(listenerRepository(), jdbcOperations.proxy());
+
+        recommendationService.rebuildRecommendations(USERNAME, 5);
+
+        assertThat(jdbcOperations.updateSqls).hasSize(2);
+        assertThat(jdbcOperations.updateSqls.get(0)).contains("DELETE FROM listener_recommendation").contains("WHERE listener_id = ?");
+        assertThat(jdbcOperations.updateSqls.get(1))
+                .contains("listener_song_activity")
+                .contains("listener_genre_priority")
+                .contains("listener_preferred_genre")
+                .contains("listener_following_performer")
+                .contains("listener_performer_attitude")
+                .contains("blocked_song")
+                .contains("blocked_performer")
+                .contains("INSERT INTO listener_recommendation");
+        assertThat(jdbcOperations.updateArguments.get(0)).containsExactly(LISTENER_ID);
+        assertThat(jdbcOperations.updateArguments.get(1)).containsExactly(LISTENER_ID);
+        assertThat(jdbcOperations.arguments).containsExactly(LISTENER_ID, 5);
+    }
+
     private ListenerRepository listenerRepository () {
         final Listener listener = listenerWithId(LISTENER_ID);
         return (ListenerRepository) Proxy.newProxyInstance(
@@ -88,6 +112,8 @@ class RecommendationServiceTest {
         private String sql;
         private Object[] arguments;
         private int queryCount;
+        private final List<String> updateSqls = new ArrayList<>();
+        private final List<Object[]> updateArguments = new ArrayList<>();
 
         public JdbcOperations proxy () {
             return (JdbcOperations) Proxy.newProxyInstance(
@@ -99,6 +125,11 @@ class RecommendationServiceTest {
                             sql = (String) args[0];
                             arguments = (Object[]) args[2];
                             return List.of();
+                        }
+                        if (method.getName().equals("update")) {
+                            updateSqls.add((String) args[0]);
+                            updateArguments.add((Object[]) args[1]);
+                            return 1;
                         }
                         throw new UnsupportedOperationException(method.getName());
                     }
