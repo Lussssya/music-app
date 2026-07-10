@@ -9,7 +9,7 @@ import com.musicapp.listener.Listener;
 import com.musicapp.listener.ListenerRepository;
 import com.musicapp.recommendation.dto.RecommendationResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.JdbcOperations;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,7 +28,7 @@ public class RecommendationService {
     private static final int MAX_LIMIT = 100;
 
     private final ListenerRepository listenerRepository;
-    private final JdbcTemplate jdbcTemplate;
+    private final JdbcOperations jdbcTemplate;
 
     @Transactional(readOnly = true)
     public List<RecommendationResponse> getRecommendations (String username, int limit) {
