@@ -22,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
@@ -84,7 +83,7 @@ public class PlaylistService {
             PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO playlist (playlist_name, type, playlist_url, picture_url, creator_id)
                     VALUES (?, ?::playlist_type, ?, ?, ?)
-                    """, Statement.RETURN_GENERATED_KEYS);
+                    """, new String[]{"playlist_id"});
             statement.setString(1, request.name().trim());
             statement.setString(2, request.type().dbValue());
             statement.setString(3, blankToNull(request.playlistUrl()));

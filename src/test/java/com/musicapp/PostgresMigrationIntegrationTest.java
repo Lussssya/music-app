@@ -50,9 +50,18 @@ class PostgresMigrationIntegrationTest {
                 WHERE success = TRUE
                 """, Integer.class);
 
-        final Integer listenerCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM listener", Integer.class);
-        final Integer songCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM song", Integer.class);
-        final Integer playlistCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM playlist", Integer.class);
+        final Integer listenerCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM listener WHERE listener_id BETWEEN 1 AND 15",
+                Integer.class
+        );
+        final Integer songCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM song WHERE song_id BETWEEN 1 AND 32",
+                Integer.class
+        );
+        final Integer playlistCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM playlist WHERE playlist_id BETWEEN 1 AND 8",
+                Integer.class
+        );
 
         assertThat(migrationCount).isEqualTo(2);
         assertThat(listenerCount).isEqualTo(15);
@@ -128,7 +137,7 @@ class PostgresMigrationIntegrationTest {
                     country_name
                 )
                 VALUES (?, ?, ?, ?, ?, ?)
-                """, "bad_email_user", "not-an-email", "hash", "Female", "1999-01-01", "United States"))
+                """, "bad_email_user", "not-an-email", "hash", "Female", LocalDate.of(1999, 1, 1), "United States"))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
         assertThatThrownBy(() -> jdbcTemplate.update("""
@@ -292,7 +301,7 @@ class PostgresMigrationIntegrationTest {
                 )
                 VALUES (?, ?, ?, ?, ?, ?)
                 RETURNING listener_id
-                """, Long.class, username, username + "@example.com", "password-hash", "Female", "1999-01-01", "United States");
+                """, Long.class, username, username + "@example.com", "password-hash", "Female", LocalDate.of(1999, 1, 1), "United States");
 
         return new TestListener(listenerId, username);
     }

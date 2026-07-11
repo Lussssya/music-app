@@ -17,6 +17,7 @@ import type {
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+export const AUTH_SESSION_INVALID_EVENT = 'music-app-auth-session-invalid';
 
 export class ApiError extends Error {
   constructor(
@@ -52,6 +53,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   });
 
   if (!response.ok) {
+    if (response.status === 401 && options.session) {
+      window.dispatchEvent(new Event(AUTH_SESSION_INVALID_EVENT));
+    }
     throw new ApiError(await errorMessage(response), response.status);
   }
 

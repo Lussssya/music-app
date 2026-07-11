@@ -8,6 +8,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -28,8 +29,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/playlists", "/api/playlists/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                .httpBasic(httpBasic -> {
-                })
+                .httpBasic(httpBasic -> httpBasic.authenticationEntryPoint((request, response, exception) -> response.sendError(HttpStatus.UNAUTHORIZED.value())))
                 .build();
     }
 
