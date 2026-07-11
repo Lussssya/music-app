@@ -1,0 +1,530 @@
+:root {
+  color: #17201a;
+  background: #f4f0e8;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.auth-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 48px;
+  align-items: center;
+  min-height: 100vh;
+  padding: 48px;
+  background:
+    linear-gradient(120deg, rgba(238, 231, 218, 0.9), rgba(244, 240, 232, 0.98)),
+    url("https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=1800&q=80") center/cover;
+}
+
+.auth-copy {
+  max-width: 680px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #68736a;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.auth-copy h1,
+.topbar h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 4.5rem);
+  line-height: 1;
+}
+
+.auth-copy p:last-child {
+  max-width: 560px;
+  color: #415246;
+  font-size: 1.08rem;
+  line-height: 1.65;
+}
+
+.auth-form,
+.panel {
+  border: 1px solid #d8d0bf;
+  border-radius: 8px;
+  background: rgba(255, 252, 245, 0.94);
+  box-shadow: 0 24px 80px rgba(31, 42, 34, 0.12);
+}
+
+.auth-form {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid #ded7c8;
+  border-radius: 8px;
+  background: #f1eadc;
+}
+
+.segmented-control button,
+.tabs button,
+.logout-button,
+.primary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+}
+
+.segmented-control button {
+  color: #586358;
+  background: transparent;
+}
+
+.segmented-control button.active {
+  color: #17201a;
+  background: #fffaf0;
+  box-shadow: 0 1px 4px rgba(31, 42, 34, 0.12);
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: #344137;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #cec5b3;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #17201a;
+  background: #fffdf8;
+}
+
+select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #cec5b3;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #17201a;
+  background: #fffdf8;
+}
+
+input:focus,
+select:focus {
+  outline: 3px solid #bfd9cb;
+  border-color: #587b66;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.form-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #d49a8f;
+  border-radius: 8px;
+  color: #7b2f24;
+  background: #fff0ed;
+}
+
+.form-success {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #a8caa9;
+  border-radius: 8px;
+  color: #254d2b;
+  background: #eff8ef;
+}
+
+.primary-action {
+  color: #fffaf0;
+  background: #203c2c;
+  font-weight: 800;
+}
+
+.primary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  min-height: 100vh;
+  background: #f7f3eb;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px;
+  border-right: 1px solid #ded7c8;
+  background: #fffaf0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand strong {
+  display: block;
+}
+
+.brand span {
+  display: block;
+  color: #68736a;
+  font-size: 0.85rem;
+}
+
+.tabs {
+  display: grid;
+  gap: 8px;
+}
+
+.tabs button,
+.logout-button {
+  justify-content: flex-start;
+  width: 100%;
+  padding: 0 12px;
+  color: #3d4a40;
+  background: transparent;
+}
+
+.tabs button.active {
+  color: #102217;
+  background: #e0eadf;
+}
+
+.logout-button {
+  margin-top: auto;
+}
+
+.content {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 32px;
+  border-bottom: 1px solid #ded7c8;
+  background: #fdf9f0;
+}
+
+.topbar h1 {
+  font-size: 2rem;
+}
+
+.account-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid #ced9cc;
+  border-radius: 8px;
+  background: #eef6ec;
+}
+
+.account-pill span {
+  color: #486050;
+  text-transform: capitalize;
+}
+
+.workspace {
+  padding: 32px;
+}
+
+.screen-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.panel {
+  max-width: 880px;
+  padding: 28px;
+}
+
+.panel h2 {
+  margin: 0 0 10px;
+  font-size: 1.4rem;
+}
+
+.panel p {
+  max-width: 620px;
+  margin: 0;
+  color: #526155;
+  line-height: 1.55;
+}
+
+.task-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.task-list span {
+  padding: 8px 10px;
+  border: 1px solid #d8d0bf;
+  border-radius: 8px;
+  background: #fffdf8;
+  color: #344137;
+  font-size: 0.9rem;
+}
+
+.toolbar-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.toolbar-form input,
+.toolbar-form select {
+  flex: 1 1 150px;
+  max-width: 240px;
+}
+
+.toolbar-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid #c8d2c7;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #203c2c;
+  background: #f7fbf5;
+  font-weight: 750;
+}
+
+.toolbar-form .primary-action,
+.primary-action.compact {
+  border: 0;
+  color: #fffaf0;
+  background: #203c2c;
+}
+
+.segmented-control.wide {
+  flex: 1 1 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 560px;
+  margin-bottom: 4px;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  max-width: 1120px;
+}
+
+.result-card {
+  min-width: 0;
+  border: 1px solid #d8d0bf;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fffdf8;
+}
+
+.result-card h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.result-card p {
+  margin: 0 0 12px;
+  color: #526155;
+  line-height: 1.4;
+}
+
+.result-card span,
+.result-card button,
+.details-block span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border-radius: 8px;
+  padding: 0 9px;
+  color: #344137;
+  background: #eef6ec;
+  font-size: 0.84rem;
+}
+
+.result-card button {
+  border: 0;
+}
+
+.chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: 900px;
+}
+
+.chip-grid span {
+  border: 1px solid #d8d0bf;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fffdf8;
+}
+
+.empty-state {
+  margin: 0;
+  color: #68736a;
+}
+
+.action-panel {
+  max-width: 1120px;
+}
+
+.state-box {
+  overflow: auto;
+  max-height: 300px;
+  margin: 18px 0 0;
+  border: 1px solid #d8d0bf;
+  border-radius: 8px;
+  padding: 14px;
+  background: #17201a;
+  color: #f5f0e7;
+  font-size: 0.85rem;
+}
+
+.split-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 460px);
+  gap: 20px;
+  align-items: start;
+  max-width: 1260px;
+}
+
+.details-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.details-block h3,
+.details-block h4 {
+  margin: 0;
+}
+
+.details-block p {
+  margin-bottom: 8px;
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 18px 0 0;
+}
+
+.account-grid div {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #ded7c8;
+  border-radius: 8px;
+  background: #fffdf8;
+}
+
+.account-grid dt {
+  color: #68736a;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.account-grid dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 840px) {
+  .auth-layout {
+    grid-template-columns: 1fr;
+    padding: 24px;
+  }
+
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid #ded7c8;
+  }
+
+  .tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .split-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .logout-button {
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .form-grid,
+  .account-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 24px;
+  }
+
+  .workspace {
+    padding: 24px;
+  }
+}
