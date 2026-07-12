@@ -84,6 +84,10 @@ export function getGenres(): Promise<Genre[]> {
   return apiRequest<Genre[]>('/genres');
 }
 
+export function getFavoriteSongs(session: AuthSession): Promise<Song[]> {
+  return apiRequest<Song[]>('/listener/me/library', { session });
+}
+
 export function getSongs(params: URLSearchParams): Promise<Song[]> {
   return apiRequest<Song[]>(`/songs?${params.toString()}`);
 }

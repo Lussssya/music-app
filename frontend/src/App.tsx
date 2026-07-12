@@ -1,16 +1,20 @@
 import { useState } from 'react';
-import { Disc3, HeartHandshake, Library, ListMusic, LogOut, Sparkles, UserCircle } from 'lucide-react';
+import { Disc3, Heart, HeartHandshake, Library, ListMusic, LogOut, Sparkles, UserCircle } from 'lucide-react';
 import { ActionsScreen } from './components/ActionsScreen';
 import { AuthPanel } from './components/AuthPanel';
 import { CatalogScreen } from './components/CatalogScreen';
 import { PlaylistsScreen } from './components/PlaylistsScreen';
 import { RecommendationsScreen } from './components/RecommendationsScreen';
+import { PlayerProvider } from './components/PlayerProvider';
+import { LibraryProvider } from './components/LibraryProvider';
+import { LibraryScreen } from './components/LibraryScreen';
 import { useAuthSession } from './hooks/useAuthSession';
 
-type TabId = 'catalog' | 'playlists' | 'actions' | 'recommendations' | 'account';
+type TabId = 'catalog' | 'library' | 'playlists' | 'actions' | 'recommendations' | 'account';
 
 const tabs: Array<{ id: TabId; label: string; icon: typeof Library }> = [
   { id: 'catalog', label: 'Catalog', icon: Library },
+  { id: 'library', label: 'Library', icon: Heart },
   { id: 'playlists', label: 'Playlists', icon: ListMusic },
   { id: 'actions', label: 'Actions', icon: HeartHandshake },
   { id: 'recommendations', label: 'Recommendations', icon: Sparkles },
@@ -26,6 +30,8 @@ export function App() {
   }
 
   return (
+    <LibraryProvider session={session}>
+    <PlayerProvider session={session}>
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
@@ -73,6 +79,7 @@ export function App() {
 
         <section className="workspace">
           {activeTab === 'catalog' && <CatalogScreen />}
+          {activeTab === 'library' && <LibraryScreen />}
           {activeTab === 'playlists' && <PlaylistsScreen session={session} />}
           {activeTab === 'actions' && <ActionsScreen session={session} />}
           {activeTab === 'recommendations' && <RecommendationsScreen session={session} />}
@@ -103,5 +110,7 @@ export function App() {
         </section>
       </main>
     </div>
+    </PlayerProvider>
+    </LibraryProvider>
   );
 }

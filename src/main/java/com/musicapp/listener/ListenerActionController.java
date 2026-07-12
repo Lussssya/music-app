@@ -3,6 +3,7 @@ package com.musicapp.listener;
 import com.musicapp.listener.dto.AttitudeRequest;
 import com.musicapp.listener.dto.PerformerActionResponse;
 import com.musicapp.listener.dto.SongActionResponse;
+import com.musicapp.catalog.dto.SongResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -14,12 +15,18 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/listener/me")
 @RequiredArgsConstructor
 public class ListenerActionController {
     private final ListenerActionService listenerActionService;
+
+    @GetMapping("/library")
+    public List<SongResponse> getFavoriteSongs (Authentication authentication) {
+        return listenerActionService.getFavoriteSongs(authentication.getName());
+    }
 
     @GetMapping("/songs/{songId}")
     public SongActionResponse getSongState (Authentication authentication, @PathVariable Long songId) {

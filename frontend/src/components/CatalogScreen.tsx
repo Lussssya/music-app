@@ -1,12 +1,16 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { RotateCcw, Search } from 'lucide-react';
+import { Heart, ListPlus, Play, RotateCcw, Search } from 'lucide-react';
 import { getAlbums, getGenres, getPerformers, getSongs } from '../api/client';
 import type { Album, Genre, Performer, Song } from '../types';
 import { EmptyState, StatusMessage, displayError } from './ScreenHelpers';
+import { usePlayer } from './PlayerProvider';
+import { useLibrary } from './LibraryProvider';
 
 type CatalogView = 'songs' | 'performers' | 'albums' | 'genres';
 
 export function CatalogScreen() {
+  const { playNow, addToQueue } = usePlayer();
+  const { isFavorite, toggleFavorite } = useLibrary();
   const [view, setView] = useState<CatalogView>('songs');
   const [search, setSearch] = useState('');
   const [genreName, setGenreName] = useState('');
@@ -163,6 +167,11 @@ export function CatalogScreen() {
               <h3>{song.title}</h3>
               <p>{song.mainPerformer.nickname} · {song.genres.join(', ') || 'No genres'}</p>
               <span>{song.album?.albumName ?? 'Single'} · {song.releaseDate}</span>
+              <div className="card-actions">
+                <button type="button" onClick={() => playNow(song, songs.slice(songs.indexOf(song) + 1))}><Play size={15} /> Play</button>
+                <button type="button" onClick={() => addToQueue(song)}><ListPlus size={15} /> Queue</button>
+                <button className={isFavorite(song.songId) ? 'favorite active' : 'favorite'} type="button" aria-label={isFavorite(song.songId) ? `Remove ${song.title} from favorites` : `Add ${song.title} to favorites`} onClick={() => void toggleFavorite(song)}><Heart size={15} fill={isFavorite(song.songId) ? 'currentColor' : 'none'} /></button>
+              </div>
             </article>
           ))}
           {!loading && !songs.length && <EmptyState>No songs match these filters.</EmptyState>}

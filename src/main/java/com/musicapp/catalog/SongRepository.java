@@ -30,4 +30,7 @@ public interface SongRepository extends JpaRepository<Song, Long> {
 
     @EntityGraph(attributePaths = {"mainPerformer", "album", "genres"})
     List<Song> findByMainPerformerIdOrderByReleaseDateDescTitle (Long performerId);
+
+    @EntityGraph(attributePaths = {"mainPerformer", "album", "genres"})
+    List<Song> findByIdInOrderByTitleAsc (List<Long> songIds);
 }

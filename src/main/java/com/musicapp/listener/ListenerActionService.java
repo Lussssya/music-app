@@ -2,6 +2,8 @@ package com.musicapp.listener;
 
 import com.musicapp.catalog.PerformerRepository;
 import com.musicapp.catalog.SongRepository;
+import com.musicapp.catalog.CatalogMapper;
+import com.musicapp.catalog.dto.SongResponse;
 import com.musicapp.common.NotFoundException;
 import com.musicapp.listener.dto.PerformerActionResponse;
 import com.musicapp.listener.dto.SongActionResponse;
@@ -14,6 +16,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +25,27 @@ public class ListenerActionService {
     private final SongRepository songRepository;
     private final PerformerRepository performerRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final CatalogMapper catalogMapper;
+
+    @Transactional(readOnly = true)
+    public List<SongResponse> getFavoriteSongs (String username) {
+        final Long listenerId = requireListenerId(username);
+        final List<Long> songIds = jdbcTemplate.queryForList("""
+                SELECT song_id
+                FROM listener_song_activity
+                WHERE listener_id = ?
+                  AND attitude = 'like'::attitude
+                ORDER BY updated_at DESC
+                """, Long.class, listenerId);
+
+        if (songIds.isEmpty()) {
+            return List.of();
+        }
+
+        return songRepository.findByIdInOrderByTitleAsc(songIds).stream()
+                .map(catalogMapper::toSongResponse)
+                .toList();
+    }
 
     @Transactional(readOnly = true)
     public SongActionResponse getSongState (String username, Long songId) {

@@ -240,7 +240,7 @@ class ListenerActionControllerTest {
         private int callCount;
 
         FakeListenerActionService () {
-            super(null, null, null, null);
+            super(null, null, null, null, null);
         }
 
         @Override

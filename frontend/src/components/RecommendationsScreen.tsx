@@ -1,14 +1,18 @@
 import { useState } from 'react';
-import { RefreshCw, Sparkles } from 'lucide-react';
+import { Heart, ListPlus, Play, RefreshCw, Sparkles } from 'lucide-react';
 import { getRecommendations, rebuildRecommendations } from '../api/client';
 import type { AuthSession, Recommendation } from '../types';
 import { EmptyState, StatusMessage, displayError } from './ScreenHelpers';
+import { usePlayer } from './PlayerProvider';
+import { useLibrary } from './LibraryProvider';
 
 type RecommendationsScreenProps = {
   session: AuthSession;
 };
 
 export function RecommendationsScreen({ session }: RecommendationsScreenProps) {
+  const { playNow, addToQueue } = usePlayer();
+  const { isFavorite, toggleFavorite } = useLibrary();
   const [limit, setLimit] = useState('10');
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +47,11 @@ export function RecommendationsScreen({ session }: RecommendationsScreenProps) {
             <h3>{recommendation.song.title}</h3>
             <p>{recommendation.song.mainPerformer.nickname} · {recommendation.song.genres.join(', ')}</p>
             <span>Score {Number(recommendation.score).toFixed(4)}</span>
+            <div className="card-actions">
+              <button type="button" onClick={() => playNow(recommendation.song, recommendations.slice(recommendations.indexOf(recommendation) + 1).map((item) => item.song))}><Play size={15} /> Play</button>
+              <button type="button" onClick={() => addToQueue(recommendation.song)}><ListPlus size={15} /> Queue</button>
+              <button className={isFavorite(recommendation.song.songId) ? 'favorite active' : 'favorite'} type="button" aria-label={isFavorite(recommendation.song.songId) ? `Remove ${recommendation.song.title} from favorites` : `Add ${recommendation.song.title} to favorites`} onClick={() => void toggleFavorite(recommendation.song)}><Heart size={15} fill={isFavorite(recommendation.song.songId) ? 'currentColor' : 'none'} /></button>
+            </div>
           </article>
         ))}
         {!recommendations.length && <EmptyState>No recommendations loaded yet.</EmptyState>}
