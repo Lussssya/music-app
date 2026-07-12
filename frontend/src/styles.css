@@ -323,6 +323,49 @@ select:focus {
   margin-top: 18px;
 }
 
+.catalog-panel {
+  max-width: 1120px;
+}
+
+.catalog-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.result-count {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 7px 11px;
+  color: #486050;
+  background: #eef6ec;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.catalog-filters {
+  align-items: end;
+}
+
+.catalog-filters label {
+  flex: 1 1 180px;
+  max-width: 260px;
+}
+
+.catalog-filters label input,
+.catalog-filters label select {
+  max-width: none;
+}
+
+.catalog-filters .search-field {
+  flex-basis: 260px;
+}
+
+.catalog-filters .filter-action {
+  flex: 0 0 auto;
+}
+
 .toolbar-form input,
 .toolbar-form select {
   flex: 1 1 150px;
@@ -526,5 +569,15 @@ select:focus {
 
   .workspace {
     padding: 24px;
+  }
+
+  .catalog-heading {
+    display: grid;
+  }
+
+  .catalog-filters label,
+  .catalog-filters .filter-action {
+    width: 100%;
+    max-width: none;
   }
 }

@@ -13,9 +13,13 @@ public interface SongRepository extends JpaRepository<Song, Long> {
             SELECT DISTINCT s
             FROM Song s
             LEFT JOIN s.genres g
-            WHERE (:search = '' OR LOWER(s.title) LIKE LOWER(CONCAT('%', :search, '%')))
+            LEFT JOIN s.album a
+            WHERE (:search = ''
+                   OR LOWER(s.title) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(s.mainPerformer.nickname) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(a.albumName) LIKE LOWER(CONCAT('%', :search, '%')))
               AND (:performerId IS NULL OR s.mainPerformer.id = :performerId)
-              AND (:genreName = '' OR g.name = :genreName)
+              AND (:genreName = '' OR LOWER(g.name) = LOWER(:genreName))
             ORDER BY s.releaseDate DESC, s.title
             """)
     List<Song> findCatalog (

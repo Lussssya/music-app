@@ -12,7 +12,9 @@ public interface AlbumRepository extends JpaRepository<Album, Long> {
     @Query("""
             SELECT a
             FROM Album a
-            WHERE (:search = '' OR LOWER(a.albumName) LIKE LOWER(CONCAT('%', :search, '%')))
+            WHERE (:search = ''
+                   OR LOWER(a.albumName) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(a.performer.nickname) LIKE LOWER(CONCAT('%', :search, '%')))
               AND (:performerId IS NULL OR a.performer.id = :performerId)
             ORDER BY a.releaseDate DESC, a.albumName
             """)

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Search } from 'lucide-react';
+import { RotateCcw, Search } from 'lucide-react';
 import { getAlbums, getGenres, getPerformers, getSongs } from '../api/client';
 import type { Album, Genre, Performer, Song } from '../types';
 import { EmptyState, StatusMessage, displayError } from './ScreenHelpers';
@@ -15,39 +15,50 @@ export function CatalogScreen() {
   const [performers, setPerformers] = useState<Performer[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
+  const [filterPerformers, setFilterPerformers] = useState<Performer[]>([]);
+  const [filterGenres, setFilterGenres] = useState<Genre[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    void loadCatalog();
+    void loadFilterOptions();
   }, []);
 
-  async function loadCatalog(event?: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    void loadCatalog();
+  }, [view]);
+
+  async function loadFilterOptions() {
+    try {
+      const [availablePerformers, availableGenres] = await Promise.all([getPerformers(''), getGenres()]);
+      setFilterPerformers(availablePerformers);
+      setFilterGenres(availableGenres);
+    } catch (caughtError) {
+      setError(displayError(caughtError));
+    }
+  }
+
+  async function loadCatalog(event?: FormEvent<HTMLFormElement>, reset = false) {
     event?.preventDefault();
     setError(null);
     setLoading(true);
 
+    const activeSearch = reset ? '' : search.trim();
+    const activeGenre = reset ? '' : genreName;
+    const activePerformer = reset ? '' : performerId;
+
     try {
       if (view === 'songs') {
         const params = new URLSearchParams();
-        if (search.trim()) {
-          params.set('search', search.trim());
-        }
-        if (genreName.trim()) {
-          params.set('genreName', genreName.trim());
-        }
-        if (performerId.trim()) {
-          params.set('performerId', performerId.trim());
-        }
+        if (activeSearch) params.set('search', activeSearch);
+        if (activeGenre) params.set('genreName', activeGenre);
+        if (activePerformer) params.set('performerId', activePerformer);
         setSongs(await getSongs(params));
-      }
-      if (view === 'performers') {
-        setPerformers(await getPerformers(search));
-      }
-      if (view === 'albums') {
-        setAlbums(await getAlbums(search, performerId));
-      }
-      if (view === 'genres') {
+      } else if (view === 'performers') {
+        setPerformers(await getPerformers(activeSearch));
+      } else if (view === 'albums') {
+        setAlbums(await getAlbums(activeSearch, activePerformer));
+      } else {
         setGenres(await getGenres());
       }
     } catch (caughtError) {
@@ -57,11 +68,37 @@ export function CatalogScreen() {
     }
   }
 
+  function clearFilters() {
+    setSearch('');
+    setGenreName('');
+    setPerformerId('');
+    void loadCatalog(undefined, true);
+  }
+
+  const visibleGenres = genres.filter((genre) =>
+    genre.genreName.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
+  );
+  const resultCount = view === 'songs'
+    ? songs.length
+    : view === 'performers'
+      ? performers.length
+      : view === 'albums'
+        ? albums.length
+        : visibleGenres.length;
+  const hasFilters = Boolean(search.trim() || genreName || performerId);
+
   return (
     <div className="screen-stack">
-      <div className="panel">
-        <h2>Catalog</h2>
-        <form className="toolbar-form" onSubmit={loadCatalog}>
+      <div className="panel catalog-panel">
+        <div className="catalog-heading">
+          <div>
+            <h2>Search and filtering</h2>
+            <p>Find music by title, artist, album, or genre.</p>
+          </div>
+          <span className="result-count" aria-live="polite">{loading ? 'Searching…' : `${resultCount} results`}</span>
+        </div>
+
+        <form className="toolbar-form catalog-filters" onSubmit={loadCatalog}>
           <div className="segmented-control wide" aria-label="Catalog view">
             {(['songs', 'performers', 'albums', 'genres'] as CatalogView[]).map((catalogView) => (
               <button key={catalogView} type="button" className={view === catalogView ? 'active' : ''} onClick={() => setView(catalogView)}>
@@ -70,20 +107,51 @@ export function CatalogScreen() {
             ))}
           </div>
 
-          {view !== 'genres' && (
-            <input placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} />
-          )}
-          {view === 'songs' && (
-            <input placeholder="Genre name" value={genreName} onChange={(event) => setGenreName(event.target.value)} />
-          )}
+          <label className="search-field">
+            <span>{view === 'genres' ? 'Genre name' : 'Search'}</span>
+            <input
+              aria-label={view === 'genres' ? 'Genre name' : 'Search catalog'}
+              placeholder={view === 'genres' ? 'e.g. Pop' : `Search ${view}`}
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+
           {(view === 'songs' || view === 'albums') && (
-            <input placeholder="Performer ID" value={performerId} onChange={(event) => setPerformerId(event.target.value)} />
+            <label>
+              <span>Performer</span>
+              <select aria-label="Filter by performer" value={performerId} onChange={(event) => setPerformerId(event.target.value)}>
+                <option value="">All performers</option>
+                {filterPerformers.map((performer) => (
+                  <option key={performer.performerId} value={performer.performerId}>{performer.nickname}</option>
+                ))}
+              </select>
+            </label>
           )}
 
-          <button className="primary-action compact" type="submit" disabled={loading}>
-            <Search size={18} />
-            {loading ? 'Loading' : 'Load'}
-          </button>
+          {view === 'songs' && (
+            <label>
+              <span>Genre</span>
+              <select aria-label="Filter by genre" value={genreName} onChange={(event) => setGenreName(event.target.value)}>
+                <option value="">All genres</option>
+                {filterGenres.map((genre) => <option key={genre.genreName} value={genre.genreName}>{genre.genreName}</option>)}
+              </select>
+            </label>
+          )}
+
+          {view !== 'genres' && (
+            <button className="primary-action compact filter-action" type="submit" disabled={loading}>
+              <Search size={18} />
+              Search
+            </button>
+          )}
+          {hasFilters && (
+            <button className="filter-action" type="button" onClick={clearFilters} disabled={loading}>
+              <RotateCcw size={17} />
+              Clear
+            </button>
+          )}
         </form>
         <StatusMessage error={error} message={null} />
       </div>
@@ -94,10 +162,10 @@ export function CatalogScreen() {
             <article className="result-card" key={song.songId}>
               <h3>{song.title}</h3>
               <p>{song.mainPerformer.nickname} · {song.genres.join(', ') || 'No genres'}</p>
-              <span>ID {song.songId}</span>
+              <span>{song.album?.albumName ?? 'Single'} · {song.releaseDate}</span>
             </article>
           ))}
-          {!songs.length && <EmptyState>No songs loaded yet.</EmptyState>}
+          {!loading && !songs.length && <EmptyState>No songs match these filters.</EmptyState>}
         </div>
       )}
 
@@ -110,7 +178,7 @@ export function CatalogScreen() {
               <span>ID {performer.performerId}</span>
             </article>
           ))}
-          {!performers.length && <EmptyState>No performers loaded yet.</EmptyState>}
+          {!loading && !performers.length && <EmptyState>No performers match your search.</EmptyState>}
         </div>
       )}
 
@@ -123,14 +191,14 @@ export function CatalogScreen() {
               <span>ID {album.albumId}</span>
             </article>
           ))}
-          {!albums.length && <EmptyState>No albums loaded yet.</EmptyState>}
+          {!loading && !albums.length && <EmptyState>No albums match these filters.</EmptyState>}
         </div>
       )}
 
       {view === 'genres' && (
         <div className="chip-grid">
-          {genres.map((genre) => <span key={genre.genreName}>{genre.genreName}</span>)}
-          {!genres.length && <EmptyState>No genres loaded yet.</EmptyState>}
+          {visibleGenres.map((genre) => <span key={genre.genreName}>{genre.genreName}</span>)}
+          {!loading && !visibleGenres.length && <EmptyState>No genres match your search.</EmptyState>}
         </div>
       )}
     </div>
