@@ -4,10 +4,14 @@ import com.musicapp.catalog.dto.AlbumResponse;
 import com.musicapp.catalog.dto.GenreResponse;
 import com.musicapp.catalog.dto.PerformerResponse;
 import com.musicapp.catalog.dto.SongResponse;
+import com.musicapp.common.BadRequestException;
 import com.musicapp.common.NotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.List;
 
@@ -21,8 +25,9 @@ public class CatalogService {
     private final CatalogMapper catalogMapper;
 
     @Transactional(readOnly = true)
-    public List<PerformerResponse> findPerformers (String search) {
-        return performerRepository.findCatalog(normalizeTextFilter(search)).stream().map(catalogMapper::toPerformerResponse).toList();
+    public Page<PerformerResponse> searchPerformers (String search, int page, int size) {
+        final Pageable pageable = createPageable(page, size);
+        return performerRepository.findCatalog(pageable, normalizeTextFilter(search)).map(catalogMapper::toPerformerResponse);
     }
 
     @Transactional(readOnly = true)
@@ -31,8 +36,9 @@ public class CatalogService {
     }
 
     @Transactional(readOnly = true)
-    public List<AlbumResponse> findAlbums (String search, Long performerId) {
-        return albumRepository.findCatalog(normalizeTextFilter(search), performerId).stream().map(catalogMapper::toAlbumResponse).toList();
+    public Page<AlbumResponse> searchAlbums (String search, Long performerId, int page, int size) {
+        final Pageable pageable = createPageable(page, size);
+        return albumRepository.findCatalog(pageable, normalizeTextFilter(search), performerId).map(catalogMapper::toAlbumResponse);
     }
 
     @Transactional(readOnly = true)
@@ -41,14 +47,16 @@ public class CatalogService {
     }
 
     @Transactional(readOnly = true)
-    public List<AlbumResponse> findAlbumsByPerformer (Long performerId) {
+    public Page<AlbumResponse> searchAlbumsByPerformer (Long performerId, int page, int size) {
+        final Pageable pageable = createPageable(page, size);
         ensurePerformerExists(performerId);
-        return albumRepository.findByPerformerIdOrderByReleaseDateDescAlbumName(performerId).stream().map(catalogMapper::toAlbumResponse).toList();
+        return albumRepository.findByPerformerIdOrderByReleaseDateDescAlbumName(pageable, performerId).map(catalogMapper::toAlbumResponse);
     }
 
     @Transactional(readOnly = true)
-    public List<SongResponse> findSongs (String search, Long performerId, String genreName) {
-        return songRepository.findCatalog(normalizeTextFilter(search), performerId, normalizeTextFilter(genreName)).stream().map(catalogMapper::toSongResponse).toList();
+    public Page<SongResponse> searchSongs (String search, Long performerId, String genreName, int page, int size) {
+        final Pageable pageable = createPageable(page, size);
+        return songRepository.findCatalog(pageable, normalizeTextFilter(search), performerId, normalizeTextFilter(genreName)).map(catalogMapper::toSongResponse);
     }
 
     private String normalizeTextFilter (String value) {
@@ -64,9 +72,10 @@ public class CatalogService {
     }
 
     @Transactional(readOnly = true)
-    public List<SongResponse> findSongsByPerformer (Long performerId) {
+    public Page<SongResponse> searchSongsByPerformer (Long performerId, int page, int size) {
+        final Pageable pageable = createPageable(page, size);
         ensurePerformerExists(performerId);
-        return songRepository.findByMainPerformerIdOrderByReleaseDateDescTitle(performerId).stream().map(catalogMapper::toSongResponse).toList();
+        return songRepository.findByMainPerformerIdOrderByReleaseDateDescTitle(pageable, performerId).map(catalogMapper::toSongResponse);
     }
 
     private void ensurePerformerExists (Long performerId) {
@@ -78,5 +87,22 @@ public class CatalogService {
     @Transactional(readOnly = true)
     public List<GenreResponse> findGenres () {
         return genreRepository.findAllByOrderByNameAsc().stream().map(catalogMapper::toGenreResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<SongResponse> getAllRecentSongs (int page, int size) {
+        final Pageable pageable = createPageable(page, size);
+        return songRepository.findAllByOrderByReleaseDateDescTitle(pageable).map(catalogMapper::toSongResponse);
+    }
+
+    private Pageable createPageable (int page, int size) {
+        ensurePaginationParameters(page, size);
+        return PageRequest.of(page, size);
+    }
+
+    private void ensurePaginationParameters (int page, int size) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new BadRequestException("Illegal page or size request. page: " + page + ", size: " + size);
+        }
     }
 }

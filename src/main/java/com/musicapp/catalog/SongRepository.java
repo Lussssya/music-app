@@ -1,5 +1,7 @@
 package com.musicapp.catalog;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -22,15 +24,19 @@ public interface SongRepository extends JpaRepository<Song, Long> {
               AND (:genreName = '' OR LOWER(g.name) = LOWER(:genreName))
             ORDER BY s.releaseDate DESC, s.title
             """)
-    List<Song> findCatalog (
+    Page<Song> findCatalog (
+            Pageable pageable,
             @Param("search") String search,
             @Param("performerId") Long performerId,
             @Param("genreName") String genreName
     );
 
     @EntityGraph(attributePaths = {"mainPerformer", "album", "genres"})
-    List<Song> findByMainPerformerIdOrderByReleaseDateDescTitle (Long performerId);
+    Page<Song> findByMainPerformerIdOrderByReleaseDateDescTitle (Pageable pageable, Long performerId);
 
     @EntityGraph(attributePaths = {"mainPerformer", "album", "genres"})
     List<Song> findByIdInOrderByTitleAsc (List<Long> songIds);
+
+    @EntityGraph(attributePaths = {"mainPerformer", "album", "genres"})
+    Page<Song> findAllByOrderByReleaseDateDescTitle(Pageable pageable);
 }

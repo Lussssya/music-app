@@ -4,6 +4,7 @@ import com.musicapp.catalog.dto.AlbumResponse;
 import com.musicapp.catalog.dto.PerformerResponse;
 import com.musicapp.catalog.dto.SongResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,8 +20,8 @@ public class PerformerController {
     private final CatalogService catalogService;
 
     @GetMapping
-    public List<PerformerResponse> findPerformers (@RequestParam(required = false) String search) {
-        return catalogService.findPerformers(search);
+    public Page<PerformerResponse> findPerformers (@RequestParam(required = false) String search, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return catalogService.searchPerformers(search, page, size);
     }
 
     @GetMapping("/{performerId}")
@@ -29,12 +30,12 @@ public class PerformerController {
     }
 
     @GetMapping("/{performerId}/albums")
-    public List<AlbumResponse> findAlbumsByPerformer (@PathVariable Long performerId) {
-        return catalogService.findAlbumsByPerformer(performerId);
+    public Page<AlbumResponse> findAlbumsByPerformer (@PathVariable Long performerId, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return catalogService.searchAlbumsByPerformer(performerId, page, size);
     }
 
     @GetMapping("/{performerId}/songs")
-    public List<SongResponse> findSongsByPerformer (@PathVariable Long performerId) {
-        return catalogService.findSongsByPerformer(performerId);
+    public Page<SongResponse> findSongsByPerformer (@PathVariable Long performerId, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return catalogService.searchSongsByPerformer(performerId, page, size);
     }
 }

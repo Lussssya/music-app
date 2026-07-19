@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
+import org.springframework.data.domain.Page;
 
 @RestController
 @RequestMapping("/api/albums")
@@ -17,11 +17,13 @@ public class AlbumController {
     private final CatalogService catalogService;
 
     @GetMapping
-    public List<AlbumResponse> findAlbums (
+    public Page<AlbumResponse> findAlbums (
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) Long performerId
+            @RequestParam(required = false) Long performerId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
     ) {
-        return catalogService.findAlbums(search, performerId);
+        return catalogService.searchAlbums(search, performerId, page, size);
     }
 
     @GetMapping("/{albumId}")

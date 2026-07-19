@@ -2,40 +2,46 @@
 GET http://localhost:8080/api/genres
 
 ### List performers
-GET http://localhost:8080/api/performers
+GET http://localhost:8080/api/performers?page=0&size=20
 
 ### Search performers
-GET http://localhost:8080/api/performers?search=aurora
+GET http://localhost:8080/api/performers?search=aurora&page=0&size=20
 
 ### Get performer details
 GET http://localhost:8080/api/performers/1
 
 ### List albums
-GET http://localhost:8080/api/albums
+GET http://localhost:8080/api/albums?page=0&size=20
+
+### Search albums
+GET http://localhost:8080/api/albums?search=electric&page=0&size=20
 
 ### List albums by performer
-GET http://localhost:8080/api/albums?performerId=1
+GET http://localhost:8080/api/albums?performerId=1&page=0&size=20
 
 ### Get album details
 GET http://localhost:8080/api/albums/1
 
 ### List songs
-GET http://localhost:8080/api/songs
+GET http://localhost:8080/api/songs?page=0&size=20
 
 ### Search songs
-GET http://localhost:8080/api/songs?search=love
+GET http://localhost:8080/api/songs?search=love&page=0&size=20
 
 ### List songs by genre
-GET http://localhost:8080/api/songs?genreName=Pop
+GET http://localhost:8080/api/songs?genreName=Pop&page=0&size=20
 
 ### List songs by performer
-GET http://localhost:8080/api/songs?performerId=1
+GET http://localhost:8080/api/songs?performerId=1&page=0&size=20
+
+### List of recent releases
+GET http://localhost:8080/api/songs/recent?page=0&size=20
 
 ### Get song details
 GET http://localhost:8080/api/songs/1
 
-### Nested performer catalog
-GET http://localhost:8080/api/performers/1/albums
+### Nested performer albums
+GET http://localhost:8080/api/performers/1/albums?page=0&size=20
 
 ### Nested performer songs
-GET http://localhost:8080/api/performers/1/songs
+GET http://localhost:8080/api/performers/1/songs?page=0&size=20

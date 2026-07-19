@@ -1,11 +1,13 @@
 package com.musicapp.catalog;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import org.springframework.data.domain.Page;
 
 public interface AlbumRepository extends JpaRepository<Album, Long> {
     @EntityGraph(attributePaths = "performer")
@@ -18,8 +20,8 @@ public interface AlbumRepository extends JpaRepository<Album, Long> {
               AND (:performerId IS NULL OR a.performer.id = :performerId)
             ORDER BY a.releaseDate DESC, a.albumName
             """)
-    List<Album> findCatalog (@Param("search") String search, @Param("performerId") Long performerId);
+    Page<Album> findCatalog (Pageable pageable, @Param("search") String search, @Param("performerId") Long performerId);
 
     @EntityGraph(attributePaths = "performer")
-    List<Album> findByPerformerIdOrderByReleaseDateDescAlbumName (Long performerId);
+    Page<Album> findByPerformerIdOrderByReleaseDateDescAlbumName (Pageable pageable, Long performerId);
 }

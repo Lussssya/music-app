@@ -1,10 +1,11 @@
 package com.musicapp.catalog;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import java.util.List;
+import org.springframework.data.domain.Page;
 
 public interface PerformerRepository extends JpaRepository<Performer, Long> {
     @Query("""
@@ -14,5 +15,5 @@ public interface PerformerRepository extends JpaRepository<Performer, Long> {
                OR LOWER(p.nickname) LIKE LOWER(CONCAT('%', :search, '%'))
             ORDER BY p.nickname
             """)
-    List<Performer> findCatalog (@Param("search") String search);
+    Page<Performer> findCatalog (Pageable pageable, @Param("search") String search);
 }
