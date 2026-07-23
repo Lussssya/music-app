@@ -5,6 +5,7 @@ import com.musicapp.common.GlobalExceptionHandler;
 import com.musicapp.listener.ListenerActionController;
 import com.musicapp.listener.ListenerActionService;
 import com.musicapp.listener.ListenerAttitude;
+import com.musicapp.listener.dto.ListeningHistoryResponse;
 import com.musicapp.listener.dto.PerformerActionResponse;
 import com.musicapp.listener.dto.SongActionResponse;
 import jakarta.servlet.FilterChain;
@@ -13,6 +14,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
@@ -33,6 +37,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
+
+
 class ListenerActionControllerTest {
     private MockMvc mockMvc;
     private FakeListenerActionService listenerActionService;
@@ -44,14 +51,16 @@ class ListenerActionControllerTest {
         final LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
 
-        mockMvc = MockMvcBuilders.standaloneSetup(new ListenerActionController(listenerActionService))
+        mockMvc = MockMvcBuilders
+                .standaloneSetup(new ListenerActionController(listenerActionService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
-                .setMessageConverters(new MappingJackson2HttpMessageConverter(
-                        Jackson2ObjectMapperBuilder.json()
-                                .featuresToDisable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-                                .build()
-                ))
+                .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
+                .setMessageConverters(
+                        new MappingJackson2HttpMessageConverter(
+                                Jackson2ObjectMapperBuilder.json()
+                                        .featuresToDisable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                                        .build()))
                 .addFilters(new AuthenticationRequiredFilter())
                 .build();
     }
@@ -203,6 +212,24 @@ class ListenerActionControllerTest {
         assertThat(listenerActionService.attitude).isEqualTo(expected);
     }
 
+    @Test
+    void getListeningHistoryMapsToService () throws Exception {
+        listenerActionService.historyPage = Page.empty(PageRequest.of(0, 20));
+
+        mockMvc.perform(get("/api/listener/me/history")
+                        .principal(authentication()))
+                .andExpect(status().isOk());
+
+        assertThat(listenerActionService.operation).isEqualTo("getListeningHistory");
+    }
+
+    @Test
+    void deleteListeningHistoryMapsToService () throws Exception {
+        mockMvc.perform(delete("/api/listener/me/history").principal(authentication())).andExpect(status().isNoContent());
+
+        assertThat(listenerActionService.operation).isEqualTo("deleteListeningHistory");
+    }
+
     private UsernamePasswordAuthenticationToken authentication () {
         return new UsernamePasswordAuthenticationToken("musiclover42", "password");
     }
@@ -238,9 +265,10 @@ class ListenerActionControllerTest {
         private boolean skipped;
         private ListenerAttitude attitude;
         private int callCount;
+        private Page<ListeningHistoryResponse> historyPage;
 
         FakeListenerActionService () {
-            super(null, null, null, null, null);
+            super(null, null, null, null, null, null);
         }
 
         @Override
@@ -280,6 +308,17 @@ class ListenerActionControllerTest {
         public SongActionResponse unblockSong (String username, Long songId) {
             operation = "unblockSong";
             return songResponse;
+        }
+
+        @Override
+        public Page<ListeningHistoryResponse> getListeningHistory (Pageable pageable, String username, Instant from, Instant to, Boolean skipped) {
+            operation = "getListeningHistory";
+            return historyPage;
+        }
+
+        @Override
+        public void deleteListeningHistory (String username) {
+            operation = "deleteListeningHistory";
         }
 
         @Override

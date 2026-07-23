@@ -1,20 +1,19 @@
 package com.musicapp.listener;
 
 import com.musicapp.listener.dto.AttitudeRequest;
+import com.musicapp.listener.dto.ListeningHistoryResponse;
 import com.musicapp.listener.dto.PerformerActionResponse;
 import com.musicapp.listener.dto.SongActionResponse;
 import com.musicapp.catalog.dto.SongResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -61,6 +60,17 @@ public class ListenerActionController {
     @DeleteMapping("/songs/{songId}/block")
     public SongActionResponse unblockSong (Authentication authentication, @PathVariable Long songId) {
         return listenerActionService.unblockSong(authentication.getName(), songId);
+    }
+
+    @GetMapping("/history")
+    public Page<ListeningHistoryResponse> getListeningHistory(Pageable pageable, Authentication authentication, @RequestParam(required = false) Instant from, @RequestParam(required = false) Instant to, @RequestParam(required = false) Boolean skipped) {
+        return listenerActionService.getListeningHistory(pageable, authentication.getName(), from, to, skipped);
+    }
+
+    @DeleteMapping("/history")
+    public ResponseEntity<Void> deleteListeningHistory (Authentication authentication) {
+        listenerActionService.deleteListeningHistory(authentication.getName());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/performers/{performerId}")

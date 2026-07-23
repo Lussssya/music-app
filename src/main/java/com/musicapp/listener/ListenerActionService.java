@@ -1,13 +1,16 @@
 package com.musicapp.listener;
 
-import com.musicapp.catalog.PerformerRepository;
-import com.musicapp.catalog.SongRepository;
-import com.musicapp.catalog.CatalogMapper;
+import com.musicapp.catalog.*;
 import com.musicapp.catalog.dto.SongResponse;
+import com.musicapp.common.BadRequestException;
 import com.musicapp.common.NotFoundException;
+import com.musicapp.listener.dto.ListeningHistoryResponse;
 import com.musicapp.listener.dto.PerformerActionResponse;
 import com.musicapp.listener.dto.SongActionResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,7 +19,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +31,7 @@ public class ListenerActionService {
     private final PerformerRepository performerRepository;
     private final JdbcTemplate jdbcTemplate;
     private final CatalogMapper catalogMapper;
+    private final CatalogService catalogService;
 
     @Transactional(readOnly = true)
     public List<SongResponse> getFavoriteSongs (String username) {
@@ -42,9 +48,7 @@ public class ListenerActionService {
             return List.of();
         }
 
-        return songRepository.findByIdInOrderByTitleAsc(songIds).stream()
-                .map(catalogMapper::toSongResponse)
-                .toList();
+        return songRepository.findByIdInOrderByTitleAsc(songIds).stream().map(catalogMapper::toSongResponse).toList();
     }
 
     @Transactional(readOnly = true)
@@ -138,6 +142,94 @@ public class ListenerActionService {
         }
 
         return listenerId;
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ListeningHistoryResponse> getListeningHistory (Pageable pageable, String username, Instant from, Instant to, Boolean skipped) {
+        ensureRangeValid(from, to);
+
+        final Long listenerId = requireListenerId(username);
+
+        StringBuilder sql = new StringBuilder("""
+                    SELECT streamed_at, skipped, song_id
+                    FROM song_stream
+                    WHERE listener_id = ?
+                """);
+
+        List<Object> params = appendHistoryFilters(from, to, skipped, listenerId, sql);
+
+        sql.append("""
+                    ORDER BY streamed_at DESC
+                    LIMIT ? OFFSET ?
+                """);
+
+        params.add(pageable.getPageSize());
+        params.add(pageable.getOffset());
+
+        final List<HistoryRow> historyRows = jdbcTemplate.query(sql.toString(), (rs, rowNum) -> new HistoryRow(rs.getLong("song_id"), rs.getTimestamp("streamed_at").toInstant(), rs.getBoolean("skipped")), params.toArray());
+        final List<Long> songIds = historyRows.stream().map(HistoryRow::songId).distinct().toList();
+        final Map<Long, SongResponse> songs = catalogService.getSongsByIds(songIds);
+
+        final List<ListeningHistoryResponse> content = historyRows.stream().map(row -> new ListeningHistoryResponse(songs.get(row.songId()), row.playedAt(), row.skipped())).toList();
+
+        StringBuilder countSql = new StringBuilder("""
+                    SELECT COUNT(*)
+                    FROM song_stream
+                    WHERE listener_id = ?
+                """);
+
+        final List<Object> countParams = appendHistoryFilters(from, to, skipped, listenerId, countSql);
+        final Long total = jdbcTemplate.queryForObject(countSql.toString(), Long.class, countParams.toArray());
+
+        return new PageImpl<>(content, pageable, total);
+    }
+
+    private void ensureRangeValid (Instant from, Instant to) {
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BadRequestException("'from' must be before 'to'");
+        }
+    }
+
+    private List<Object> appendHistoryFilters (Instant from, Instant to, Boolean skipped, Long listenerId, StringBuilder sql) {
+        List<Object> params = new ArrayList<>();
+        params.add(listenerId);
+
+        if (from != null) {
+            sql.append(" AND streamed_at >= ?");
+            params.add(from);
+        }
+
+        if (to != null) {
+            sql.append(" AND streamed_at <= ?");
+            params.add(to);
+        }
+
+        if (skipped != null) {
+            sql.append(" AND skipped = ?");
+            params.add(skipped);
+        }
+
+        return params;
+    }
+
+    private record HistoryRow(
+            Long songId,
+            Instant playedAt,
+            boolean skipped
+    ){
+    }
+
+    @Transactional
+    public void deleteListeningHistory (String username) {
+        final Long listenerId = requireListenerId(username);
+
+        jdbcTemplate.update("""
+            DELETE
+            FROM song_stream
+            WHERE listener_id = ?
+            """,
+                listenerId
+        );
     }
 
     @Transactional(readOnly = true)
@@ -259,15 +351,7 @@ public class ListenerActionService {
 
     private SongActionResponse mapSongState (Long listenerId, Long songId, ResultSet rs) throws SQLException {
         final Instant blockedAt = toInstant(rs, "blocked_at");
-        return new SongActionResponse(
-                listenerId,
-                songId,
-                rs.getInt("stream_count"),
-                rs.getInt("skip_count"),
-                toAttitude(rs.getString("attitude")),
-                blockedAt != null,
-                blockedAt
-        );
+        return new SongActionResponse(listenerId, songId, rs.getInt("stream_count"), rs.getInt("skip_count"), toAttitude(rs.getString("attitude")), blockedAt != null, blockedAt);
     }
 
     private PerformerActionResponse findPerformerState (Long listenerId, Long performerId) {
@@ -292,15 +376,7 @@ public class ListenerActionService {
     private PerformerActionResponse mapPerformerState (Long listenerId, Long performerId, ResultSet rs) throws SQLException {
         final Instant followedAt = toInstant(rs, "followed_at");
         final Instant blockedAt = toInstant(rs, "blocked_at");
-        return new PerformerActionResponse(
-                listenerId,
-                performerId,
-                followedAt != null,
-                toAttitude(rs.getString("attitude")),
-                blockedAt != null,
-                followedAt,
-                blockedAt
-        );
+        return new PerformerActionResponse(listenerId, performerId, followedAt != null, toAttitude(rs.getString("attitude")), blockedAt != null, followedAt, blockedAt);
     }
 
     private Instant toInstant (ResultSet rs, String columnName) throws SQLException {

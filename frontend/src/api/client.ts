@@ -5,6 +5,8 @@ import type {
   AuthUser,
   Genre,
   LoginRequest,
+  ListeningHistoryItem,
+  PageResponse,
   Performer,
   PerformerActionState,
   Playlist,
@@ -86,6 +88,14 @@ export function getGenres(): Promise<Genre[]> {
 
 export function getFavoriteSongs(session: AuthSession): Promise<Song[]> {
   return apiRequest<Song[]>('/listener/me/library', { session });
+}
+
+export function getListeningHistory(session: AuthSession, params: URLSearchParams): Promise<PageResponse<ListeningHistoryItem>> {
+  return apiRequest<PageResponse<ListeningHistoryItem>>(`/listener/me/history?${params.toString()}`, { session });
+}
+
+export function deleteListeningHistory(session: AuthSession): Promise<void> {
+  return apiRequest<void>('/listener/me/history', { method: 'DELETE', session });
 }
 
 export function getSongs(params: URLSearchParams): Promise<Song[]> {

@@ -14,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.PageRequest;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -104,5 +106,14 @@ public class CatalogService {
         if (page < 0 || size < 1 || size > 100) {
             throw new BadRequestException("Illegal page or size request. page: " + page + ", size: " + size);
         }
+    }
+
+    @Transactional(readOnly = true)
+    public Map<Long, SongResponse> getSongsByIds (List<Long> songIds) {
+        if (songIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return songRepository.findByIdInOrderByTitleAsc(songIds).stream().collect(Collectors.toMap(Song::getId, catalogMapper::toSongResponse));
     }
 }

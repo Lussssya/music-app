@@ -138,3 +138,19 @@ export type Recommendation = {
   generatedAt: string;
   song: Song;
 };
+
+export type PageResponse<T> = {
+  content: T[];
+  number: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+};
+
+export type ListeningHistoryItem = {
+  song: Song;
+  playedAt: string;
+  skipped: boolean;
+};

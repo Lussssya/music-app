@@ -58,6 +58,14 @@ Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
 DELETE http://localhost:8080/api/listener/me/songs/11/block
 Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
 
+### Get listening history
+GET http://localhost:8080/api/listener/me/history?page=0&size=20
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Clear listener's history
+DELETE http://localhost:8080/api/listener/me/history
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
 ### Get current listener state for a performer
 GET http://localhost:8080/api/listener/me/performers/1
 Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
