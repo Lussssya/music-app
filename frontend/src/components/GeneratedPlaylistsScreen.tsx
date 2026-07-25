@@ -24,10 +24,26 @@ export function GeneratedPlaylistsScreen({ session }: GeneratedPlaylistsScreenPr
     void loadPlaylists();
   }, [session]);
 
+  useEffect(() => {
+    const nextExpiry = playlists
+      .filter((playlist) => playlist.available && playlist.expiresAt)
+      .map((playlist) => new Date(playlist.expiresAt!).getTime())
+      .sort((first, second) => first - second)[0];
+
+    if (!nextExpiry) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => void loadPlaylists(), Math.max(nextExpiry - Date.now() + 1_000, 1_000));
+    return () => window.clearTimeout(timer);
+  }, [playlists]);
+
   async function loadPlaylists() {
     setError(null);
     try {
-      setPlaylists(await getGeneratedPlaylists(session));
+      const loadedPlaylists = await getGeneratedPlaylists(session);
+      setPlaylists(loadedPlaylists);
+      setSelected((current) => current && loadedPlaylists.some((playlist) => playlist.type === current.type && playlist.available) ? current : null);
     } catch (caughtError) {
       setError(displayError(caughtError));
     }
@@ -37,7 +53,9 @@ export function GeneratedPlaylistsScreen({ session }: GeneratedPlaylistsScreenPr
     setError(null);
     setLoadingType(playlist.type);
     try {
-      setSelected(await generatePlaylist(session, playlist.type));
+      const generatedPlaylist = await generatePlaylist(session, playlist.type);
+      setSelected(generatedPlaylist);
+      setPlaylists((current) => current.map((item) => item.type === generatedPlaylist.type ? generatedPlaylist : item));
     } catch (caughtError) {
       setError(displayError(caughtError));
     } finally {
@@ -70,22 +88,9 @@ export function GeneratedPlaylistsScreen({ session }: GeneratedPlaylistsScreenPr
           </div>
           <button type="button" className="text-button" onClick={() => void loadPlaylists()}>Refresh</button>
         </div>
-        <div className="generated-grid">
-          {playlists.map((playlist, index) => (
-            <button
-              className="generated-card"
-              type="button"
-              key={playlist.type}
-              onClick={() => void openPlaylist(playlist)}
-              disabled={loadingType !== null}
-            >
-              <span className={`generated-cover ${cardColors[index % cardColors.length]}`}><Sparkles size={26} /></span>
-              <strong>{playlist.name}</strong>
-              <span>{loadingType === playlist.type ? 'Building your playlist…' : playlist.description}</span>
-            </button>
-          ))}
-          {!playlists.length && !error && <EmptyState>Your generated playlists will appear here.</EmptyState>}
-        </div>
+        <GeneratedPlaylistCards playlists={playlists.filter((playlist) => playlist.available)} loadingType={loadingType} onOpen={openPlaylist} label="Ready to play" />
+        <GeneratedPlaylistCards playlists={playlists.filter((playlist) => !playlist.available)} loadingType={loadingType} onOpen={openPlaylist} label="Create a fresh mix" />
+        {!playlists.length && !error && <EmptyState>Your generated playlists will appear here.</EmptyState>}
       </section>
 
       {selected && (
@@ -100,9 +105,9 @@ export function GeneratedPlaylistsScreen({ session }: GeneratedPlaylistsScreenPr
           </div>
           {selected.songs.length ? (
             <ol className="generated-song-list">
-              {selected.songs.map((song) => (
+              {selected.songs.map((song, index) => (
                 <li key={song.songId}>
-                  <span className="song-number">{selected.songs.indexOf(song) + 1}</span>
+                  <span className="song-number">{index + 1}</span>
                   <div><strong>{song.title}</strong><span>{song.mainPerformer.nickname} · {song.album?.albumName ?? 'Single'}</span></div>
                   <div className="song-list-actions">
                     <button type="button" aria-label={`Play ${song.title}`} onClick={() => playSong(song)}><Play size={16} fill="currentColor" /></button>
@@ -115,6 +120,40 @@ export function GeneratedPlaylistsScreen({ session }: GeneratedPlaylistsScreenPr
           ) : <EmptyState>Not enough listening data for this playlist yet. Play more music and try again.</EmptyState>}
         </section>
       )}
+    </div>
+  );
+}
+
+type GeneratedPlaylistCardsProps = {
+  playlists: GeneratedPlaylistSummary[];
+  loadingType: string | null;
+  label: string;
+  onOpen: (playlist: GeneratedPlaylistSummary) => Promise<void>;
+};
+
+function GeneratedPlaylistCards({ playlists, loadingType, label, onOpen }: GeneratedPlaylistCardsProps) {
+  if (!playlists.length) {
+    return null;
+  }
+
+  return (
+    <div className="generated-playlist-group">
+      <h3>{label}</h3>
+      <div className="generated-grid">
+        {playlists.map((playlist, index) => (
+            <button
+              className="generated-card"
+              type="button"
+              key={playlist.type}
+              onClick={() => void onOpen(playlist)}
+              disabled={loadingType !== null}
+            >
+              <span className={`generated-cover ${cardColors[index % cardColors.length]}`}><Sparkles size={26} /></span>
+              <strong>{playlist.name}</strong>
+              <span>{loadingType === playlist.type ? 'Building your playlist…' : playlist.available ? `Available until ${new Date(playlist.expiresAt!).toLocaleString()}` : playlist.description}</span>
+            </button>
+          ))}
+      </div>
     </div>
   );
 }

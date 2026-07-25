@@ -89,8 +89,8 @@ public class PlaylistController {
     }
 
     @GetMapping("/generated")
-    public List<GeneratedPlaylistSummaryResponse> getGeneratedPlaylists() {
-        return playlistService.getAvailableGeneratedPlaylists();
+    public List<GeneratedPlaylistSummaryResponse> getGeneratedPlaylists(Authentication authentication) {
+        return playlistService.getAvailableGeneratedPlaylists(authentication.getName());
     }
 
     @GetMapping("/generated/{type}")

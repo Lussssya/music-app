@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,10 +23,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Function;
 
 @Service
@@ -35,6 +33,7 @@ public class PlaylistService {
     private final SongRepository songRepository;
     private final JdbcTemplate jdbcTemplate;
     private final CatalogService catalogService;
+    private final GeneratedPlaylistRepository generatedPlaylistRepository;
 
     @Transactional(readOnly = true)
     public List<PlaylistSummaryResponse> findPlaylists (String search, PlaylistType type, Long creatorId, Long memberId) {
@@ -65,9 +64,7 @@ public class PlaylistService {
                   ))
                 GROUP BY p.playlist_id, creator.username
                 ORDER BY p.created_at DESC, p.playlist_name
-                """, this::mapPlaylistSummary, normalizeTextFilter(search), normalizeTextFilter(search),
-                type == null ? null : type.dbValue(), type == null ? null : type.dbValue(),
-                creatorId, creatorId, memberId, memberId);
+                """, this::mapPlaylistSummary, normalizeTextFilter(search), normalizeTextFilter(search), type == null ? null : type.dbValue(), type == null ? null : type.dbValue(), creatorId, creatorId, memberId, memberId);
     }
 
     @Transactional(readOnly = true)
@@ -115,8 +112,7 @@ public class PlaylistService {
                     playlist_url = ?,
                     picture_url = ?
                 WHERE playlist_id = ?
-                """, request.name().trim(), request.type().dbValue(), blankToNull(request.playlistUrl()),
-                blankToNull(request.pictureUrl()), playlistId);
+                """, request.name().trim(), request.type().dbValue(), blankToNull(request.playlistUrl()), blankToNull(request.pictureUrl()), playlistId);
 
         return findPlaylist(playlistId);
     }
@@ -223,52 +219,269 @@ public class PlaylistService {
         return findPlaylist(playlistId);
     }
 
-    @Transactional(readOnly = true)
-    public List<GeneratedPlaylistSummaryResponse> getAvailableGeneratedPlaylists () {
-        return Arrays.stream(GeneratedPlaylistType.values()).map(type -> new GeneratedPlaylistSummaryResponse(type, type.getDisplayName(), type.getDescription())).toList();
+    @Scheduled(cron = "0 0 3 * * *")
+    @Transactional
+    public void cleanupGeneratedPlaylists() {
+        generatedPlaylistRepository.deleteExpiredPlaylists();
     }
 
     @Transactional(readOnly = true)
-    public GeneratedPlaylistResponse generatePlaylist (String username, GeneratedPlaylistType type) {
-        return switch (type) {
-            case DAILY_REWIND -> buildGeneratedPlaylist(username, type, this::findDailyRewindSongs);
-            case WEEKLY_REWIND -> buildGeneratedPlaylist(username, type, this::findWeeklyRewindSongs);
-            case ALL_TIME_REWIND -> buildGeneratedPlaylist(username, type, this::findAllTimeRewindSongs);
-            case FORGOTTEN_GEMS -> buildGeneratedPlaylist(username, type, this::findForgottenGemsSongs);
-            case COMFORT_SONGS -> buildGeneratedPlaylist(username, type, this::findComfortSongs);
-            case NO_SKIPS -> buildGeneratedPlaylist(username, type, this::findNoSkipSongs);
-            case HIDDEN_FAVOURITES -> buildGeneratedPlaylist(username, type, this::findHiddenFavouritesSongs);
-            case GENRE_MIX -> buildGeneratedPlaylist(username, type, this::findGenreMixSongs);
-            case REDISCOVER -> buildGeneratedPlaylist(username, type, this::findRediscoverSongs);
-        };
-    }
-
-    private GeneratedPlaylistResponse buildGeneratedPlaylist (String username, GeneratedPlaylistType type, Function<Long, List<SongResponse>> songSupplier) {
+    public List<GeneratedPlaylistSummaryResponse> getAvailableGeneratedPlaylists (String username) {
         final Long listenerId = requireListenerId(username);
-        final List<SongResponse> songs = songSupplier.apply(listenerId);
+        final Map<GeneratedPlaylistType, GeneratedPlaylist> cachedPlaylists = generatedPlaylistRepository
+                .findAllByListenerId(listenerId).stream()
+                .collect(java.util.stream.Collectors.toMap(GeneratedPlaylist::getPlaylistType, Function.identity()));
 
-        return new GeneratedPlaylistResponse(type, type.getDisplayName(), type.getDescription(), songs);
+        return Arrays.stream(GeneratedPlaylistType.values())
+                .map(type -> toGeneratedPlaylistSummary(type, cachedPlaylists.get(type)))
+                .toList();
     }
 
-    private List<SongResponse> findDailyRewindSongs (Long listenerId) {
+    @Transactional
+    public GeneratedPlaylistResponse generatePlaylist(String username, GeneratedPlaylistType type) {
+        final Long listenerId = requireListenerId(username);
+
+        GeneratedPlaylist playlist = generatedPlaylistRepository.findByListenerIdAndPlaylistType(listenerId, type).orElse(null);
+
+        if (playlist != null && !isExpired(playlist)) {
+            return buildCachedResponse(playlist);
+        }
+
+        List<Long> songIds = switch (type) {
+            case DAILY_REWIND -> generateSongIds(listenerId, this::findDailyRewindSongs);
+            case WEEKLY_REWIND -> generateSongIds(listenerId, this::findWeeklyRewindSongs);
+            case ALL_TIME_REWIND -> generateSongIds(listenerId, this::findAllTimeRewindSongs);
+            case FORGOTTEN_GEMS -> generateSongIds(listenerId, this::findForgottenGemsSongs);
+            case COMFORT_SONGS -> generateSongIds(listenerId, this::findComfortSongs);
+            case NO_SKIPS -> generateSongIds(listenerId, this::findNoSkipSongs);
+            case HIDDEN_FAVOURITES -> generateSongIds(listenerId, this::findHiddenFavouritesSongs);
+            case GENRE_MIX -> generateSongIds(listenerId, this::findGenreMixSongs);
+            case REDISCOVER -> generateSongIds(listenerId, this::findRediscoverSongs);
+        };
+
+        final GeneratedPlaylist savedPlaylist = savePlaylist(playlist, listenerId, type, songIds);
+
+        return buildPlaylistResponse(type, songIds, savedPlaylist.getGeneratedAt(), savedPlaylist.getExpiresAt());
+    }
+
+    private boolean isExpired (GeneratedPlaylist playlist) {
+        return !Instant.now().isBefore(playlist.getExpiresAt());
+    }
+
+    private GeneratedPlaylistResponse buildCachedResponse (GeneratedPlaylist playlist) {
+        List<Long> songIds = playlist.getSongs().stream().map(GeneratedPlaylistSong::getSongId).toList();
+
+        return buildPlaylistResponse(playlist.getPlaylistType(), songIds, playlist.getGeneratedAt(), playlist.getExpiresAt());
+    }
+
+    private List<Long> generateSongIds (Long listenerId, Function<Long, List<Long>> songSupplier) {
+
+        List<Long> songIds = songSupplier.apply(listenerId).stream().distinct().toList();
+
+        return completePlaylist(listenerId, songIds, 20);
+    }
+
+    private GeneratedPlaylist savePlaylist(
+            GeneratedPlaylist playlist,
+            Long listenerId,
+            GeneratedPlaylistType type,
+            List<Long> songIds) {
+
+        if (playlist == null) {
+            playlist = new GeneratedPlaylist();
+        }
+
         Instant now = Instant.now();
+
+        playlist.setListenerId(listenerId);
+        playlist.setPlaylistType(type);
+        playlist.setGeneratedAt(now);
+        playlist.setExpiresAt(now.plus(type.getCacheDuration()));
+
+        playlist.getSongs().clear();
+
+        for (int i = 0; i < songIds.size(); i++) {
+            GeneratedPlaylistSong song = new GeneratedPlaylistSong();
+            song.setSongId(songIds.get(i));
+            song.setPosition(i + 1);
+            playlist.addSong(song);
+        }
+
+        return generatedPlaylistRepository.save(playlist);
+    }
+
+    private GeneratedPlaylistResponse buildPlaylistResponse (GeneratedPlaylistType type, List<Long> songIds, Instant generatedAt, Instant expiresAt) {
+
+        final Map<Long, SongResponse> songsById = catalogService.getSongsByIds(songIds);
+
+        final List<SongResponse> songs = songIds.stream().map(songsById::get).filter(Objects::nonNull).toList();
+
+        return new GeneratedPlaylistResponse(type, type.getDisplayName(), type.getDescription(), generatedAt, expiresAt, songs);
+    }
+
+    private GeneratedPlaylistSummaryResponse toGeneratedPlaylistSummary (GeneratedPlaylistType type, GeneratedPlaylist playlist) {
+        return new GeneratedPlaylistSummaryResponse(
+                type,
+                type.getDisplayName(),
+                type.getDescription(),
+                playlist != null && !isExpired(playlist),
+                playlist == null ? null : playlist.getGeneratedAt(),
+                playlist == null ? null : playlist.getExpiresAt()
+        );
+    }
+
+    private List<Long> completePlaylist (Long listenerId, List<Long> playlist, int targetSize) {
+        final LinkedHashSet<Long> songs = new LinkedHashSet<>(playlist);
+
+        if (songs.size() < targetSize) {
+            songs.addAll(findGenreRecommendations(listenerId, songs, targetSize - songs.size()));
+        }
+
+        if (songs.size() < targetSize) {
+            songs.addAll(findPopularRecommendations(listenerId, songs, targetSize - songs.size()));
+        }
+
+        return songs.stream().limit(targetSize).toList();
+    }
+
+    private List<Long> findGenreRecommendations (Long listenerId, Set<Long> excludedSongIds, int limit) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT s.song_id
+                FROM song s
+                JOIN song_genre sg
+                    ON sg.song_id = s.song_id
+                JOIN listener_genre_priority lgp
+                    ON lgp.genre_name = sg.genre_name
+                LEFT JOIN song_stream ss
+                    ON ss.song_id = s.song_id
+                WHERE lgp.listener_id = ?
+                """);
+
+        List<Object> params = new ArrayList<>();
+
+        if (!excludedSongIds.isEmpty()) {
+            sql.append("""
+                          AND s.song_id NOT IN (
+                    """);
+            sql.append(placeholders(excludedSongIds.size()));
+            sql.append(")\n");
+
+            params.addAll(excludedSongIds);
+        }
+
+        sql.append("""
+                GROUP BY s.song_id
+                ORDER BY MAX(lgp.priority_score) DESC,
+                         COUNT(ss.song_id) DESC,
+                         MAX(ss.streamed_at) DESC,
+                         MAX(s.song_id)
+                LIMIT ?
+                """);
+
+        params.add(limit);
+
+        return findListenerSongs(listenerId, sql.toString(), params.toArray());
+    }
+
+    private List<Long> findPopularRecommendations (Long listenerId, Set<Long> excludedSongIds, int limit) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT s.song_id
+                FROM song s
+                LEFT JOIN song_stream ss
+                    ON ss.song_id = s.song_id
+                WHERE 1 = 1
+                """);
+
+        List<Object> params = new ArrayList<>();
+
+        if (!excludedSongIds.isEmpty()) {
+            sql.append("""
+                          AND s.song_id NOT IN (
+                    """);
+            sql.append(placeholders(excludedSongIds.size()));
+            sql.append(") ");
+
+            params.addAll(excludedSongIds);
+        }
+
+        sql.append("""
+                GROUP BY s.song_id
+                ORDER BY COUNT(ss.song_id) DESC,
+                         MAX(ss.streamed_at) DESC
+                LIMIT ?
+                """);
+
+        params.add(limit);
+
+        return findGlobalSongs(listenerId, sql.toString(), params.toArray());
+    }
+
+    private List<Long> findGlobalSongs (Long listenerId, String sql, Object... params) {
+        return executeFilteredSongQuery(listenerId, sql, params);
+    }
+
+    private String placeholders (int count) {
+        return String.join(",", Collections.nCopies(count, "?"));
+    }
+
+    private List<Long> executeFilteredSongQuery (Long listenerId, String sql, Object[] queryParams) {
+        final String filteredSql = """
+                                           SELECT s.song_id
+                                           FROM (
+                                           """ + sql + """
+                                           ) s
+                                           JOIN song song
+                                               ON song.song_id = s.song_id
+                                           WHERE NOT EXISTS (
+                                               SELECT 1
+                                               FROM blocked_song bs
+                                               WHERE bs.listener_id = ?
+                                                 AND bs.song_id = s.song_id
+                                           )
+                                             AND NOT EXISTS (
+                                               SELECT 1
+                                               FROM blocked_performer bp
+                                               WHERE bp.listener_id = ?
+                                               AND EXISTS (
+                                                   SELECT 1
+                                                   FROM performer_song ps
+                                                   WHERE ps.performer_id = bp.performer_id
+                                                     AND ps.song_id = song.song_id
+                                               )
+                                           )
+                                           """;
+
+        final Object[] finalParams = new Object[(queryParams == null ? 0 : queryParams.length) + 2];
+
+        if (queryParams != null && queryParams.length > 0) {
+            System.arraycopy(queryParams, 0, finalParams, 0, queryParams.length);
+        }
+
+        finalParams[finalParams.length - 2] = listenerId;
+        finalParams[finalParams.length - 1] = listenerId;
+
+        return jdbcTemplate.queryForList(filteredSql, Long.class, finalParams);
+    }
+
+    private List<Long> findDailyRewindSongs (Long listenerId) {
+        final Instant now = Instant.now();
 
         return findTopSongs(listenerId, now.minus(1, ChronoUnit.DAYS), now, 20);
     }
 
-    private List<SongResponse> findWeeklyRewindSongs (Long listenerId) {
-        Instant now = Instant.now();
+    private List<Long> findWeeklyRewindSongs (Long listenerId) {
+        final Instant now = Instant.now();
 
         return findTopSongs(listenerId, now.minus(7, ChronoUnit.DAYS), now, 20);
     }
 
-    private List<SongResponse> findComfortSongs (Long listenerId) {
+    private List<Long> findComfortSongs (Long listenerId) {
         final Instant now = Instant.now();
 
         return findTopSongs(listenerId, now.minus(365, ChronoUnit.DAYS), now, 20);
     }
 
-    private List<SongResponse> findNoSkipSongs (Long listenerId) {
+    private List<Long> findNoSkipSongs (Long listenerId) {
         final String sql = """
                 SELECT song_id
                 FROM listener_song_activity
@@ -279,10 +492,10 @@ public class PlaylistService {
                 LIMIT 20
                 """;
 
-        return findSongs(sql, listenerId);
+        return findListenerSongs(listenerId, sql);
     }
 
-    private List<SongResponse> findHiddenFavouritesSongs (Long listenerId) {
+    private List<Long> findHiddenFavouritesSongs (Long listenerId) {
         final String sql = """
                 SELECT song_id
                 FROM listener_song_activity
@@ -293,14 +506,14 @@ public class PlaylistService {
                 LIMIT 20
                 """;
 
-        return findSongs(sql, listenerId);
+        return findListenerSongs(listenerId, sql);
     }
 
-    private List<SongResponse> findAllTimeRewindSongs (Long listenerId) {
+    private List<Long> findAllTimeRewindSongs (Long listenerId) {
         return findTopSongs(listenerId, Instant.EPOCH, Instant.now(), 20);
     }
 
-    private List<SongResponse> findGenreMixSongs (Long listenerId) {
+    private List<Long> findGenreMixSongs (Long listenerId) {
         final String sql = """
                 SELECT s.song_id
                 FROM song s
@@ -311,14 +524,15 @@ public class PlaylistService {
                 WHERE lgp.listener_id = ?
                 GROUP BY s.song_id
                 ORDER BY MAX(lgp.priority_score) DESC,
-                         COUNT(*) DESC
+                         COUNT(*) DESC,
+                         MAX(s.song_id)
                 LIMIT 20
                 """;
 
-        return findSongs(sql, listenerId);
+        return findListenerSongs(listenerId, sql);
     }
 
-    private List<SongResponse> findForgottenGemsSongs (Long listenerId) {
+    private List<Long> findForgottenGemsSongs (Long listenerId) {
         final Instant oneMonthAgo = Instant.now().minus(30, ChronoUnit.DAYS);
 
         final String sql = """
@@ -333,10 +547,10 @@ public class PlaylistService {
                 LIMIT 20
                 """;
 
-        return findSongs(sql, listenerId, Timestamp.from(oneMonthAgo), Timestamp.from(oneMonthAgo));
+        return findListenerSongs(listenerId, sql, Timestamp.from(oneMonthAgo), Timestamp.from(oneMonthAgo));
     }
 
-    private List<SongResponse> findRediscoverSongs (Long listenerId) {
+    private List<Long> findRediscoverSongs (Long listenerId) {
         final Instant oneYearAgo = Instant.now().minus(365, ChronoUnit.DAYS);
         final Instant sixMonthsAgo = Instant.now().minus(180, ChronoUnit.DAYS);
         final Instant oneMonthAgo = Instant.now().minus(30, ChronoUnit.DAYS);
@@ -353,32 +567,34 @@ public class PlaylistService {
                 LIMIT 20
                 """;
 
-        return findSongs(sql, listenerId, Timestamp.from(oneYearAgo), Timestamp.from(sixMonthsAgo), Timestamp.from(oneMonthAgo));
+        return findListenerSongs(listenerId, sql, Timestamp.from(oneYearAgo), Timestamp.from(sixMonthsAgo), Timestamp.from(oneMonthAgo));
     }
 
-    private List<SongResponse> findSongs (String sql, Object... params) {
-        final List<Long> songIds = jdbcTemplate.queryForList(sql, Long.class, params);
-        final Map<Long, SongResponse> songsById = catalogService.getSongsByIds(songIds);
-
-        return songIds.stream()
-                .map(songsById::get)
-                .filter(Objects::nonNull)
-                .toList();
-    }
-
-    private List<SongResponse> findTopSongs (Long listenerId, Instant from, Instant to, int limit) {
+    private List<Long> findTopSongs (Long listenerId, Instant from, Instant to, int limit) {
         final String sql = """
                 SELECT song_id
                 FROM song_stream
                 WHERE listener_id = ?
-                  AND streamed_at >= ?
-                  AND streamed_at < ?
+                AND streamed_at >= ?
+                AND streamed_at < ?
                 GROUP BY song_id
-                ORDER BY COUNT(*) DESC
+                ORDER BY COUNT(*) DESC, MAX(streamed_at) DESC
                 LIMIT ?
                 """;
 
-        return findSongs(sql, listenerId, from, to, limit);
+        return findListenerSongs(listenerId, sql, from, to, limit);
+    }
+
+    private List<Long> findListenerSongs (Long listenerId, String sql, Object... params) {
+        final Object[] queryParams = new Object[(params == null ? 0 : params.length) + 1];
+
+        queryParams[0] = listenerId;
+
+        if (params != null && params.length > 0) {
+            System.arraycopy(params, 0, queryParams, 1, params.length);
+        }
+
+        return executeFilteredSongQuery(listenerId, sql, queryParams);
     }
 
     private PlaylistResponse findPlaylist (Long playlistId) {
@@ -402,20 +618,7 @@ public class PlaylistService {
                 GROUP BY p.playlist_id, creator.username
                 """, this::mapPlaylistSummary, playlistId);
 
-        return new PlaylistResponse(
-                summary.playlistId(),
-                summary.name(),
-                summary.type(),
-                summary.playlistUrl(),
-                summary.pictureUrl(),
-                summary.creatorId(),
-                summary.creatorUsername(),
-                summary.createdAt(),
-                summary.memberCount(),
-                summary.songCount(),
-                findPlaylistMembers(playlistId),
-                findPlaylistSongs(playlistId)
-        );
+        return new PlaylistResponse(summary.playlistId(), summary.name(), summary.type(), summary.playlistUrl(), summary.pictureUrl(), summary.creatorId(), summary.creatorUsername(), summary.createdAt(), summary.memberCount(), summary.songCount(), findPlaylistMembers(playlistId), findPlaylistSongs(playlistId));
     }
 
     private List<PlaylistMemberResponse> findPlaylistMembers (Long playlistId) {
@@ -454,39 +657,16 @@ public class PlaylistService {
     }
 
     private PlaylistSummaryResponse mapPlaylistSummary (ResultSet rs, int rowNum) throws SQLException {
-        return new PlaylistSummaryResponse(
-                rs.getLong("playlist_id"),
-                rs.getString("playlist_name"),
-                rs.getString("type"),
-                rs.getString("playlist_url"),
-                rs.getString("picture_url"),
-                rs.getLong("creator_id"),
-                rs.getString("creator_username"),
-                toInstant(rs, "created_at"),
-                rs.getInt("member_count"),
-                rs.getInt("song_count")
-        );
+        return new PlaylistSummaryResponse(rs.getLong("playlist_id"), rs.getString("playlist_name"), rs.getString("type"), rs.getString("playlist_url"), rs.getString("picture_url"), rs.getLong("creator_id"), rs.getString("creator_username"), toInstant(rs, "created_at"), rs.getInt("member_count"), rs.getInt("song_count"));
     }
 
     private PlaylistMemberResponse mapPlaylistMember (ResultSet rs, int rowNum) throws SQLException {
-        return new PlaylistMemberResponse(
-                rs.getLong("listener_id"),
-                rs.getString("username"),
-                toInstant(rs, "joined_at")
-        );
+        return new PlaylistMemberResponse(rs.getLong("listener_id"), rs.getString("username"), toInstant(rs, "joined_at"));
     }
 
     private PlaylistSongResponse mapPlaylistSong (ResultSet rs, int rowNum) throws SQLException {
         Long addedByListenerId = rs.getObject("added_by_listener_id", Long.class);
-        return new PlaylistSongResponse(
-                rs.getLong("song_id"),
-                rs.getString("title"),
-                rs.getLong("main_performer_id"),
-                rs.getString("main_performer_name"),
-                addedByListenerId,
-                toInstant(rs, "added_at"),
-                rs.getInt("vote_count")
-        );
+        return new PlaylistSongResponse(rs.getLong("song_id"), rs.getString("title"), rs.getLong("main_performer_id"), rs.getString("main_performer_name"), addedByListenerId, toInstant(rs, "added_at"), rs.getInt("vote_count"));
     }
 
     private Long requireListenerIdForExistingPlaylist (String username, Long playlistId) {

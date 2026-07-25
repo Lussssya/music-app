@@ -286,19 +286,25 @@ class PlaylistControllerTest {
 
     @Test
     void getGeneratedPlaylistsReturnsAvailablePlaylists() throws Exception {
-        when(playlistService.getAvailableGeneratedPlaylists()).thenReturn(List.of(
+        when(playlistService.getAvailableGeneratedPlaylists("musiclover42")).thenReturn(List.of(
                 new GeneratedPlaylistSummaryResponse(
                         GeneratedPlaylistType.DAILY_REWIND,
                         "Daily Rewind",
-                        "Your most played songs today"
+                        "Your most played songs today",
+                        true,
+                        Instant.parse("2024-03-01T08:30:00Z"),
+                        Instant.parse("2024-03-02T08:30:00Z")
                 )
         ));
 
-        mockMvc.perform(get("/api/playlists/generated"))
+        mockMvc.perform(get("/api/playlists/generated").principal(authentication()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].type").value("DAILY_REWIND"))
                 .andExpect(jsonPath("$[0].name").value("Daily Rewind"))
-                .andExpect(jsonPath("$[0].description").value("Your most played songs today"));
+                .andExpect(jsonPath("$[0].description").value("Your most played songs today"))
+                .andExpect(jsonPath("$[0].available").value(true));
+
+        verify(playlistService).getAvailableGeneratedPlaylists("musiclover42");
     }
 
     @Test
@@ -325,6 +331,8 @@ class PlaylistControllerTest {
                 GeneratedPlaylistType.DAILY_REWIND,
                 "Daily Rewind",
                 "Your most played songs today",
+                Instant.parse("2024-03-01T08:30:00Z"),
+                Instant.parse("2024-03-02T08:30:00Z"),
                 List.of(song())
         );
     }

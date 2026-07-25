@@ -148,6 +148,9 @@ export type GeneratedPlaylistSummary = {
   type: GeneratedPlaylistType;
   name: string;
   description: string;
+  available: boolean;
+  generatedAt: string | null;
+  expiresAt: string | null;
 };
 
 export type GeneratedPlaylist = GeneratedPlaylistSummary & {

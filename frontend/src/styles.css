@@ -511,6 +511,15 @@ select:focus {
   margin-top: 16px;
 }
 
+.generated-playlist-group + .generated-playlist-group {
+  margin-top: 26px;
+}
+
+.generated-playlist-group h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
 .generated-card {
   display: grid;
   gap: 11px;
