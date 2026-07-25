@@ -26,6 +26,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/albums", "/api/albums/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/songs", "/api/songs/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/genres", "/api/genres/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/playlists/generated", "/api/playlists/generated/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/playlists", "/api/playlists/**").permitAll()
                         .anyRequest().authenticated()
                 )

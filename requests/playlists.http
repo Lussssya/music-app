@@ -37,6 +37,14 @@ Content-Type: application/json
   "pictureUrl": null
 }
 
+### Get Available Generated Playlists
+GET http://localhost:8080/api/playlists/generated
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
+### Get Specific Generated Playlist
+GET http://localhost:8080/api/playlists/generated-playlists/{playlistId}
+Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+
 ### Delete playlist
 DELETE http://localhost:8080/api/playlists/6
 Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz

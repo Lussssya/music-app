@@ -1,9 +1,6 @@
 package com.musicapp.playlist;
 
-import com.musicapp.playlist.dto.CreatePlaylistRequest;
-import com.musicapp.playlist.dto.PlaylistResponse;
-import com.musicapp.playlist.dto.PlaylistSummaryResponse;
-import com.musicapp.playlist.dto.UpdatePlaylistRequest;
+import com.musicapp.playlist.dto.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -89,5 +86,15 @@ public class PlaylistController {
             return null;
         }
         return PlaylistType.fromDbValue(type.trim());
+    }
+
+    @GetMapping("/generated")
+    public List<GeneratedPlaylistSummaryResponse> getGeneratedPlaylists() {
+        return playlistService.getAvailableGeneratedPlaylists();
+    }
+
+    @GetMapping("/generated/{type}")
+    public GeneratedPlaylistResponse generatePlaylist(Authentication authentication, @PathVariable GeneratedPlaylistType type) {
+        return playlistService.generatePlaylist(authentication.getName(), type);
     }
 }

@@ -63,7 +63,7 @@ public class ListenerActionController {
     }
 
     @GetMapping("/history")
-    public Page<ListeningHistoryResponse> getListeningHistory(Pageable pageable, Authentication authentication, @RequestParam(required = false) Instant from, @RequestParam(required = false) Instant to, @RequestParam(required = false) Boolean skipped) {
+    public Page<ListeningHistoryResponse> getListeningHistory (Pageable pageable, Authentication authentication, @RequestParam(required = false) Instant from, @RequestParam(required = false) Instant to, @RequestParam(required = false) Boolean skipped) {
         return listenerActionService.getListeningHistory(pageable, authentication.getName(), from, to, skipped);
     }
 

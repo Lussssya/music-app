@@ -133,6 +133,27 @@ export type PlaylistRequest = {
   pictureUrl: string | null;
 };
 
+export type GeneratedPlaylistType =
+  | 'DAILY_REWIND'
+  | 'WEEKLY_REWIND'
+  | 'ALL_TIME_REWIND'
+  | 'FORGOTTEN_GEMS'
+  | 'COMFORT_SONGS'
+  | 'NO_SKIPS'
+  | 'HIDDEN_FAVOURITES'
+  | 'GENRE_MIX'
+  | 'REDISCOVER';
+
+export type GeneratedPlaylistSummary = {
+  type: GeneratedPlaylistType;
+  name: string;
+  description: string;
+};
+
+export type GeneratedPlaylist = GeneratedPlaylistSummary & {
+  songs: Song[];
+};
+
 export type Recommendation = {
   score: number;
   generatedAt: string;

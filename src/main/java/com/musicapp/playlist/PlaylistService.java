@@ -1,16 +1,13 @@
 package com.musicapp.playlist;
 
+import com.musicapp.catalog.CatalogService;
 import com.musicapp.catalog.SongRepository;
+import com.musicapp.catalog.dto.SongResponse;
 import com.musicapp.common.BadRequestException;
 import com.musicapp.common.NotFoundException;
 import com.musicapp.listener.Listener;
 import com.musicapp.listener.ListenerRepository;
-import com.musicapp.playlist.dto.CreatePlaylistRequest;
-import com.musicapp.playlist.dto.PlaylistMemberResponse;
-import com.musicapp.playlist.dto.PlaylistResponse;
-import com.musicapp.playlist.dto.PlaylistSongResponse;
-import com.musicapp.playlist.dto.PlaylistSummaryResponse;
-import com.musicapp.playlist.dto.UpdatePlaylistRequest;
+import com.musicapp.playlist.dto.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -24,8 +21,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +34,7 @@ public class PlaylistService {
     private final ListenerRepository listenerRepository;
     private final SongRepository songRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final CatalogService catalogService;
 
     @Transactional(readOnly = true)
     public List<PlaylistSummaryResponse> findPlaylists (String search, PlaylistType type, Long creatorId, Long memberId) {
@@ -219,6 +221,164 @@ public class PlaylistService {
                 """, playlistId, songId, listenerId);
 
         return findPlaylist(playlistId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<GeneratedPlaylistSummaryResponse> getAvailableGeneratedPlaylists () {
+        return Arrays.stream(GeneratedPlaylistType.values()).map(type -> new GeneratedPlaylistSummaryResponse(type, type.getDisplayName(), type.getDescription())).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public GeneratedPlaylistResponse generatePlaylist (String username, GeneratedPlaylistType type) {
+        return switch (type) {
+            case DAILY_REWIND -> buildGeneratedPlaylist(username, type, this::findDailyRewindSongs);
+            case WEEKLY_REWIND -> buildGeneratedPlaylist(username, type, this::findWeeklyRewindSongs);
+            case ALL_TIME_REWIND -> buildGeneratedPlaylist(username, type, this::findAllTimeRewindSongs);
+            case FORGOTTEN_GEMS -> buildGeneratedPlaylist(username, type, this::findForgottenGemsSongs);
+            case COMFORT_SONGS -> buildGeneratedPlaylist(username, type, this::findComfortSongs);
+            case NO_SKIPS -> buildGeneratedPlaylist(username, type, this::findNoSkipSongs);
+            case HIDDEN_FAVOURITES -> buildGeneratedPlaylist(username, type, this::findHiddenFavouritesSongs);
+            case GENRE_MIX -> buildGeneratedPlaylist(username, type, this::findGenreMixSongs);
+            case REDISCOVER -> buildGeneratedPlaylist(username, type, this::findRediscoverSongs);
+        };
+    }
+
+    private GeneratedPlaylistResponse buildGeneratedPlaylist (String username, GeneratedPlaylistType type, Function<Long, List<SongResponse>> songSupplier) {
+        final Long listenerId = requireListenerId(username);
+        final List<SongResponse> songs = songSupplier.apply(listenerId);
+
+        return new GeneratedPlaylistResponse(type, type.getDisplayName(), type.getDescription(), songs);
+    }
+
+    private List<SongResponse> findDailyRewindSongs (Long listenerId) {
+        Instant now = Instant.now();
+
+        return findTopSongs(listenerId, now.minus(1, ChronoUnit.DAYS), now, 20);
+    }
+
+    private List<SongResponse> findWeeklyRewindSongs (Long listenerId) {
+        Instant now = Instant.now();
+
+        return findTopSongs(listenerId, now.minus(7, ChronoUnit.DAYS), now, 20);
+    }
+
+    private List<SongResponse> findComfortSongs (Long listenerId) {
+        final Instant now = Instant.now();
+
+        return findTopSongs(listenerId, now.minus(365, ChronoUnit.DAYS), now, 20);
+    }
+
+    private List<SongResponse> findNoSkipSongs (Long listenerId) {
+        final String sql = """
+                SELECT song_id
+                FROM listener_song_activity
+                WHERE listener_id = ?
+                  AND stream_count >= 10
+                  AND skip_count::decimal / stream_count <= 0.05
+                ORDER BY stream_count DESC
+                LIMIT 20
+                """;
+
+        return findSongs(sql, listenerId);
+    }
+
+    private List<SongResponse> findHiddenFavouritesSongs (Long listenerId) {
+        final String sql = """
+                SELECT song_id
+                FROM listener_song_activity
+                WHERE listener_id = ?
+                  AND stream_count >= 20
+                  AND attitude IS DISTINCT FROM 'like'
+                ORDER BY stream_count DESC
+                LIMIT 20
+                """;
+
+        return findSongs(sql, listenerId);
+    }
+
+    private List<SongResponse> findAllTimeRewindSongs (Long listenerId) {
+        return findTopSongs(listenerId, Instant.EPOCH, Instant.now(), 20);
+    }
+
+    private List<SongResponse> findGenreMixSongs (Long listenerId) {
+        final String sql = """
+                SELECT s.song_id
+                FROM song s
+                JOIN song_genre sg
+                    ON sg.song_id = s.song_id
+                JOIN listener_genre_priority lgp
+                    ON lgp.genre_name = sg.genre_name
+                WHERE lgp.listener_id = ?
+                GROUP BY s.song_id
+                ORDER BY MAX(lgp.priority_score) DESC,
+                         COUNT(*) DESC
+                LIMIT 20
+                """;
+
+        return findSongs(sql, listenerId);
+    }
+
+    private List<SongResponse> findForgottenGemsSongs (Long listenerId) {
+        final Instant oneMonthAgo = Instant.now().minus(30, ChronoUnit.DAYS);
+
+        final String sql = """
+                SELECT song_id
+                FROM song_stream
+                WHERE listener_id = ?
+                  AND streamed_at < ?
+                GROUP BY song_id
+                HAVING COUNT(*) >= 10
+                   AND MAX(streamed_at) < ?
+                ORDER BY COUNT(*) DESC
+                LIMIT 20
+                """;
+
+        return findSongs(sql, listenerId, Timestamp.from(oneMonthAgo), Timestamp.from(oneMonthAgo));
+    }
+
+    private List<SongResponse> findRediscoverSongs (Long listenerId) {
+        final Instant oneYearAgo = Instant.now().minus(365, ChronoUnit.DAYS);
+        final Instant sixMonthsAgo = Instant.now().minus(180, ChronoUnit.DAYS);
+        final Instant oneMonthAgo = Instant.now().minus(30, ChronoUnit.DAYS);
+
+        final String sql = """
+                SELECT song_id
+                FROM song_stream
+                WHERE listener_id = ?
+                  AND streamed_at BETWEEN ? AND ?
+                GROUP BY song_id
+                HAVING COUNT(*) >= 5
+                   AND MAX(streamed_at) < ?
+                ORDER BY COUNT(*) DESC
+                LIMIT 20
+                """;
+
+        return findSongs(sql, listenerId, Timestamp.from(oneYearAgo), Timestamp.from(sixMonthsAgo), Timestamp.from(oneMonthAgo));
+    }
+
+    private List<SongResponse> findSongs (String sql, Object... params) {
+        final List<Long> songIds = jdbcTemplate.queryForList(sql, Long.class, params);
+        final Map<Long, SongResponse> songsById = catalogService.getSongsByIds(songIds);
+
+        return songIds.stream()
+                .map(songsById::get)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    private List<SongResponse> findTopSongs (Long listenerId, Instant from, Instant to, int limit) {
+        final String sql = """
+                SELECT song_id
+                FROM song_stream
+                WHERE listener_id = ?
+                  AND streamed_at >= ?
+                  AND streamed_at < ?
+                GROUP BY song_id
+                ORDER BY COUNT(*) DESC
+                LIMIT ?
+                """;
+
+        return findSongs(sql, listenerId, from, to, limit);
     }
 
     private PlaylistResponse findPlaylist (Long playlistId) {

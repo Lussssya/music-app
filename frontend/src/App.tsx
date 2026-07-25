@@ -9,14 +9,16 @@ import { PlayerProvider } from './components/PlayerProvider';
 import { LibraryProvider } from './components/LibraryProvider';
 import { LibraryScreen } from './components/LibraryScreen';
 import { HistoryScreen } from './components/HistoryScreen';
+import { GeneratedPlaylistsScreen } from './components/GeneratedPlaylistsScreen';
 import { useAuthSession } from './hooks/useAuthSession';
 
-type TabId = 'catalog' | 'library' | 'history' | 'playlists' | 'actions' | 'recommendations' | 'account';
+type TabId = 'catalog' | 'library' | 'history' | 'generated' | 'playlists' | 'actions' | 'recommendations' | 'account';
 
 const tabs: Array<{ id: TabId; label: string; icon: typeof Library }> = [
   { id: 'catalog', label: 'Catalog', icon: Library },
   { id: 'library', label: 'Library', icon: Heart },
   { id: 'history', label: 'History', icon: History },
+  { id: 'generated', label: 'Made for You', icon: Sparkles },
   { id: 'playlists', label: 'Playlists', icon: ListMusic },
   { id: 'actions', label: 'Actions', icon: HeartHandshake },
   { id: 'recommendations', label: 'Recommendations', icon: Sparkles },
@@ -83,6 +85,7 @@ export function App() {
           {activeTab === 'catalog' && <CatalogScreen />}
           {activeTab === 'library' && <LibraryScreen />}
           {activeTab === 'history' && <HistoryScreen session={session} />}
+          {activeTab === 'generated' && <GeneratedPlaylistsScreen session={session} />}
           {activeTab === 'playlists' && <PlaylistsScreen session={session} />}
           {activeTab === 'actions' && <ActionsScreen session={session} />}
           {activeTab === 'recommendations' && <RecommendationsScreen session={session} />}

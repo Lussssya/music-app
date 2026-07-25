@@ -4,6 +4,8 @@ import type {
   AuthSession,
   AuthUser,
   Genre,
+  GeneratedPlaylist,
+  GeneratedPlaylistSummary,
   LoginRequest,
   ListeningHistoryItem,
   PageResponse,
@@ -200,6 +202,14 @@ export function getPlaylists(params: URLSearchParams): Promise<PlaylistSummary[]
 
 export function getPlaylist(playlistId: string): Promise<Playlist> {
   return apiRequest<Playlist>(`/playlists/${playlistId}`);
+}
+
+export function getGeneratedPlaylists(session: AuthSession): Promise<GeneratedPlaylistSummary[]> {
+  return apiRequest<GeneratedPlaylistSummary[]>('/playlists/generated', { session });
+}
+
+export function generatePlaylist(session: AuthSession, type: string): Promise<GeneratedPlaylist> {
+  return apiRequest<GeneratedPlaylist>(`/playlists/generated/${type}`, { session });
 }
 
 export function createPlaylist(session: AuthSession, request: PlaylistRequest): Promise<Playlist> {

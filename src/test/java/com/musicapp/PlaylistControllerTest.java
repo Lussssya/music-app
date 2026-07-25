@@ -1,21 +1,19 @@
 package com.musicapp;
 
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.musicapp.catalog.dto.AlbumSummary;
+import com.musicapp.catalog.dto.PerformerSummary;
+import com.musicapp.catalog.dto.SongResponse;
 import com.musicapp.common.GlobalExceptionHandler;
+import com.musicapp.playlist.GeneratedPlaylistType;
 import com.musicapp.playlist.PlaylistController;
 import com.musicapp.playlist.PlaylistService;
 import com.musicapp.playlist.PlaylistType;
-import com.musicapp.playlist.dto.CreatePlaylistRequest;
-import com.musicapp.playlist.dto.PlaylistMemberResponse;
-import com.musicapp.playlist.dto.PlaylistResponse;
-import com.musicapp.playlist.dto.PlaylistSongResponse;
-import com.musicapp.playlist.dto.PlaylistSummaryResponse;
-import com.musicapp.playlist.dto.UpdatePlaylistRequest;
+import com.musicapp.playlist.dto.*;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -29,10 +27,17 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -42,11 +47,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class PlaylistControllerTest {
     private MockMvc mockMvc;
-    private FakePlaylistService playlistService;
+    private PlaylistService playlistService;
 
     @BeforeEach
     void setUp () {
-        playlistService = new FakePlaylistService();
+        playlistService = mock(PlaylistService.class);
 
         final LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
@@ -65,7 +70,7 @@ class PlaylistControllerTest {
 
     @Test
     void findPlaylistsUsesSearchAndFilters () throws Exception {
-        playlistService.summaries = List.of(summary());
+        when(playlistService.findPlaylists("focus", PlaylistType.PUBLIC, 12L, 5L)).thenReturn(List.of(summary()));
 
         mockMvc.perform(get("/api/playlists?search=focus&type=public&creatorId=12&memberId=5"))
                 .andExpect(status().isOk())
@@ -75,15 +80,12 @@ class PlaylistControllerTest {
                 .andExpect(jsonPath("$[0].memberCount").value(3))
                 .andExpect(jsonPath("$[0].songCount").value(2));
 
-        assertThat(playlistService.search).isEqualTo("focus");
-        Assertions.assertThat(playlistService.type).isEqualTo(PlaylistType.PUBLIC);
-        assertThat(playlistService.creatorId).isEqualTo(12L);
-        assertThat(playlistService.memberId).isEqualTo(5L);
+        verify(playlistService).findPlaylists("focus", PlaylistType.PUBLIC, 12L, 5L);
     }
 
     @Test
     void getPlaylistReturnsDetails () throws Exception {
-        playlistService.response = playlist();
+        when(playlistService.getPlaylist(1L)).thenReturn(playlist());
 
         mockMvc.perform(get("/api/playlists/1"))
                 .andExpect(status().isOk())
@@ -92,7 +94,7 @@ class PlaylistControllerTest {
                 .andExpect(jsonPath("$.songs[0].title").value("Midnight Sun"))
                 .andExpect(jsonPath("$.songs[0].voteCount").value(2));
 
-        assertThat(playlistService.playlistId).isEqualTo(1L);
+        verify(playlistService).getPlaylist(1L);
     }
 
     @Test
@@ -110,7 +112,7 @@ class PlaylistControllerTest {
 
     @Test
     void createPlaylistReturnsCreatedPlaylist () throws Exception {
-        playlistService.response = playlist();
+        when(playlistService.createPlaylist(eq("musiclover42"), any(CreatePlaylistRequest.class))).thenReturn(playlist());
 
         mockMvc.perform(post("/api/playlists")
                         .principal(authentication())
@@ -127,9 +129,9 @@ class PlaylistControllerTest {
                 .andExpect(jsonPath("$.playlistId").value(1))
                 .andExpect(jsonPath("$.name").value("Late Night Finds"));
 
-        assertThat(playlistService.username).isEqualTo("musiclover42");
-        assertThat(playlistService.createRequest.name()).isEqualTo("Late Night Finds");
-        assertThat(playlistService.createRequest.type()).isEqualTo(PlaylistType.PRIVATE);
+        verify(playlistService).createPlaylist("musiclover42", new CreatePlaylistRequest(
+                "Late Night Finds", PlaylistType.PRIVATE,
+                "https://musicapp.com/playlist/late-night-finds", null));
     }
 
     @Test
@@ -151,7 +153,8 @@ class PlaylistControllerTest {
 
     @Test
     void updatePlaylistRequiresCreatorPermission () throws Exception {
-        playlistService.exception = new AccessDeniedException("Only the playlist creator can change this playlist.");
+        doThrow(new AccessDeniedException("Only the playlist creator can change this playlist."))
+                .when(playlistService).updatePlaylist(eq("musiclover42"), eq(1L), any(UpdatePlaylistRequest.class));
 
         mockMvc.perform(put("/api/playlists/1")
                         .principal(authentication())
@@ -168,7 +171,7 @@ class PlaylistControllerTest {
 
     @Test
     void updatePlaylistMapsRequest () throws Exception {
-        playlistService.response = playlist();
+        when(playlistService.updatePlaylist(eq("musiclover42"), eq(1L), any(UpdatePlaylistRequest.class))).thenReturn(playlist());
 
         mockMvc.perform(put("/api/playlists/1")
                         .principal(authentication())
@@ -182,14 +185,14 @@ class PlaylistControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.playlistId").value(1));
 
-        assertThat(playlistService.operation).isEqualTo("update");
-        assertThat(playlistService.updateRequest.name()).isEqualTo("Updated");
-        assertThat(playlistService.updateRequest.type()).isEqualTo(PlaylistType.SHARED);
+        verify(playlistService).updatePlaylist("musiclover42", 1L,
+                new UpdatePlaylistRequest("Updated", PlaylistType.SHARED, null, null));
     }
 
     @Test
     void deletePlaylistRequiresCreatorPermission () throws Exception {
-        playlistService.exception = new AccessDeniedException("Only the playlist creator can change this playlist.");
+        doThrow(new AccessDeniedException("Only the playlist creator can change this playlist."))
+                .when(playlistService).deletePlaylist("musiclover42", 1L);
 
         mockMvc.perform(delete("/api/playlists/1").principal(authentication())).andExpect(status().isForbidden()).andExpect(jsonPath("$.status").value(403));
     }
@@ -198,46 +201,49 @@ class PlaylistControllerTest {
     void deletePlaylistReturnsNoContent () throws Exception {
         mockMvc.perform(delete("/api/playlists/1").principal(authentication())).andExpect(status().isNoContent());
 
-        assertThat(playlistService.operation).isEqualTo("delete");
-        assertThat(playlistService.playlistId).isEqualTo(1L);
+        verify(playlistService).deletePlaylist("musiclover42", 1L);
     }
 
     @Test
     void joinAndLeavePlaylistMapToService () throws Exception {
-        playlistService.response = playlist();
+        when(playlistService.joinPlaylist("musiclover42", 1L)).thenReturn(playlist());
+        when(playlistService.leavePlaylist("musiclover42", 1L)).thenReturn(playlist());
 
         mockMvc.perform(put("/api/playlists/1/members/me").principal(authentication()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.playlistId").value(1));
-        assertThat(playlistService.operation).isEqualTo("join");
+        verify(playlistService).joinPlaylist("musiclover42", 1L);
 
         mockMvc.perform(delete("/api/playlists/1/members/me").principal(authentication()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.playlistId").value(1));
-        assertThat(playlistService.operation).isEqualTo("leave");
+        verify(playlistService).leavePlaylist("musiclover42", 1L);
     }
 
     @Test
     void addRemoveVoteAndUnvoteSongsMapToService () throws Exception {
-        playlistService.response = playlist();
+        when(playlistService.addSong("musiclover42", 1L, 3L)).thenReturn(playlist());
+        when(playlistService.removeSong("musiclover42", 1L, 3L)).thenReturn(playlist());
+        when(playlistService.voteForSong("musiclover42", 1L, 3L)).thenReturn(playlist());
+        when(playlistService.removeSongVote("musiclover42", 1L, 3L)).thenReturn(playlist());
 
         mockMvc.perform(put("/api/playlists/1/songs/3").principal(authentication())).andExpect(status().isOk());
-        assertThat(playlistService.operation).isEqualTo("addSong");
-        assertThat(playlistService.songId).isEqualTo(3L);
+        verify(playlistService).addSong("musiclover42", 1L, 3L);
 
         mockMvc.perform(delete("/api/playlists/1/songs/3").principal(authentication())).andExpect(status().isOk());
-        assertThat(playlistService.operation).isEqualTo("removeSong");
+        verify(playlistService).removeSong("musiclover42", 1L, 3L);
 
         mockMvc.perform(put("/api/playlists/1/songs/3/vote").principal(authentication())).andExpect(status().isOk());
-        assertThat(playlistService.operation).isEqualTo("vote");
+        verify(playlistService).voteForSong("musiclover42", 1L, 3L);
 
         mockMvc.perform(delete("/api/playlists/1/songs/3/vote").principal(authentication())).andExpect(status().isOk());
-        assertThat(playlistService.operation).isEqualTo("unvote");
+        verify(playlistService).removeSongVote("musiclover42", 1L, 3L);
     }
 
     @Test
     void songChangesRequirePlaylistMembership () throws Exception {
-        playlistService.exception = new AccessDeniedException("Only playlist members can change playlist songs or votes.");
+        doThrow(new AccessDeniedException("Only playlist members can change playlist songs or votes."))
+                .when(playlistService).addSong("musiclover42", 1L, 3L);
 
         mockMvc.perform(put("/api/playlists/1/songs/3").principal(authentication())).andExpect(status().isForbidden()).andExpect(jsonPath("$.messages[0]").value("Only playlist members can change playlist songs or votes."));
     }
@@ -278,123 +284,57 @@ class PlaylistControllerTest {
         );
     }
 
-    static class FakePlaylistService extends PlaylistService {
-        private List<PlaylistSummaryResponse> summaries = List.of();
-        private PlaylistResponse response;
-        private RuntimeException exception;
-        private String username;
-        private String search;
-        private PlaylistType type;
-        private Long creatorId;
-        private Long memberId;
-        private Long playlistId;
-        private Long songId;
-        private String operation;
-        private CreatePlaylistRequest createRequest;
-        private UpdatePlaylistRequest updateRequest;
+    @Test
+    void getGeneratedPlaylistsReturnsAvailablePlaylists() throws Exception {
+        when(playlistService.getAvailableGeneratedPlaylists()).thenReturn(List.of(
+                new GeneratedPlaylistSummaryResponse(
+                        GeneratedPlaylistType.DAILY_REWIND,
+                        "Daily Rewind",
+                        "Your most played songs today"
+                )
+        ));
 
-        FakePlaylistService () {
-            super(null, null, null);
-        }
+        mockMvc.perform(get("/api/playlists/generated"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].type").value("DAILY_REWIND"))
+                .andExpect(jsonPath("$[0].name").value("Daily Rewind"))
+                .andExpect(jsonPath("$[0].description").value("Your most played songs today"));
+    }
 
-        @Override
-        public List<PlaylistSummaryResponse> findPlaylists (String search, PlaylistType type, Long creatorId, Long memberId) {
-            this.search = search;
-            this.type = type;
-            this.creatorId = creatorId;
-            this.memberId = memberId;
-            return summaries;
-        }
+    @Test
+    void generatePlaylistUsesTypeAndAuthentication() throws Exception {
+        when(playlistService.generatePlaylist("musiclover42", GeneratedPlaylistType.DAILY_REWIND)).thenReturn(generatedPlaylist());
 
-        @Override
-        public PlaylistResponse getPlaylist (Long playlistId) {
-            this.playlistId = playlistId;
-            return response;
-        }
+        mockMvc.perform(get("/api/playlists/generated/DAILY_REWIND")
+                        .principal(authentication()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.type").value("DAILY_REWIND"))
+                .andExpect(jsonPath("$.name").value("Daily Rewind"))
+                .andExpect(jsonPath("$.songs[0].title").value("Midnight Sun"));
 
-        @Override
-        public PlaylistResponse createPlaylist (String username, CreatePlaylistRequest request) {
-            this.username = username;
-            this.createRequest = request;
-            return response;
-        }
+        verify(playlistService).generatePlaylist("musiclover42", GeneratedPlaylistType.DAILY_REWIND);
+    }
 
-        @Override
-        public PlaylistResponse updatePlaylist (String username, Long playlistId, UpdatePlaylistRequest request) {
-            throwIfNeeded();
-            this.operation = "update";
-            this.username = username;
-            this.playlistId = playlistId;
-            this.updateRequest = request;
-            return response;
-        }
+    @Test
+    void generatePlaylistRejectsUnknownType() throws Exception {
+        mockMvc.perform(get("/api/playlists/generated/UNKNOWN").principal(authentication())).andExpect(status().isBadRequest());
+    }
 
-        @Override
-        public void deletePlaylist (String username, Long playlistId) {
-            throwIfNeeded();
-            this.operation = "delete";
-            this.username = username;
-            this.playlistId = playlistId;
-        }
+    private GeneratedPlaylistResponse generatedPlaylist() {
+        return new GeneratedPlaylistResponse(
+                GeneratedPlaylistType.DAILY_REWIND,
+                "Daily Rewind",
+                "Your most played songs today",
+                List.of(song())
+        );
+    }
 
-        @Override
-        public PlaylistResponse joinPlaylist (String username, Long playlistId) {
-            this.operation = "join";
-            this.username = username;
-            this.playlistId = playlistId;
-            return response;
-        }
-
-        @Override
-        public PlaylistResponse leavePlaylist (String username, Long playlistId) {
-            this.operation = "leave";
-            this.username = username;
-            this.playlistId = playlistId;
-            return response;
-        }
-
-        @Override
-        public PlaylistResponse addSong (String username, Long playlistId, Long songId) {
-            throwIfNeeded();
-            this.operation = "addSong";
-            this.username = username;
-            this.playlistId = playlistId;
-            this.songId = songId;
-            return response;
-        }
-
-        @Override
-        public PlaylistResponse removeSong (String username, Long playlistId, Long songId) {
-            this.operation = "removeSong";
-            this.username = username;
-            this.playlistId = playlistId;
-            this.songId = songId;
-            return response;
-        }
-
-        @Override
-        public PlaylistResponse voteForSong (String username, Long playlistId, Long songId) {
-            this.operation = "vote";
-            this.username = username;
-            this.playlistId = playlistId;
-            this.songId = songId;
-            return response;
-        }
-
-        @Override
-        public PlaylistResponse removeSongVote (String username, Long playlistId, Long songId) {
-            this.operation = "unvote";
-            this.username = username;
-            this.playlistId = playlistId;
-            this.songId = songId;
-            return response;
-        }
-
-        private void throwIfNeeded () {
-            if (exception != null) {
-                throw exception;
-            }
-        }
+    private SongResponse song () {
+        return new SongResponse(
+                3L, "Midnight Sun", "https://musicapp.com/songs/3", LocalDate.of(2024, 1, 20),
+                "Written by Aurora Sky", new BigDecimal("0.0035"), new PerformerSummary(1L, "Aurora Sky"),
+                new AlbumSummary(2L, "Electric Dreams", LocalDate.of(2024, 1, 20)), List.of("Electronic", "Pop")
+        );
     }
 
     static class MutationsRequireAuthenticationFilter extends OncePerRequestFilter {
