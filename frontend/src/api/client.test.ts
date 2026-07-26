@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AUTH_SESSION_INVALID_EVENT, ApiError, apiRequest } from './client';
+import { AUTH_SESSION_INVALID_EVENT, ApiError, apiRequest, clearCsrfToken, login } from './client';
 import type { AuthSession } from '../types';
 
 const session: AuthSession = {
@@ -12,12 +12,14 @@ const session: AuthSession = {
     dateOfBirth: '1998-04-12',
     planName: 'free',
     balance: 0
-  },
-  basicAuth: 'Basic dGVzdDp0ZXN0'
+  }
 };
 
 describe('apiRequest error states', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    clearCsrfToken();
+    vi.unstubAllGlobals();
+  });
 
   it('uses the first structured backend error message', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
@@ -46,5 +48,50 @@ describe('apiRequest error states', () => {
     expect(listener).toHaveBeenCalledOnce();
 
     window.removeEventListener(AUTH_SESSION_INVALID_EVENT, listener);
+  });
+
+  it('gets a CSRF token and sends it with every unsafe request', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        headerName: 'X-XSRF-TOKEN',
+        token: 'csrf-token'
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ saved: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(apiRequest<{ saved: boolean }>('/listener/me/songs/1/stream', {
+      method: 'POST',
+      session
+    })).resolves.toEqual({ saved: true });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/auth/csrf', expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/listener/me/songs/1/stream', expect.objectContaining({
+      credentials: 'include',
+      headers: expect.any(Headers)
+    }));
+    const [, request] = fetchMock.mock.calls[1];
+    expect((request.headers as Headers).get('X-XSRF-TOKEN')).toBe('csrf-token');
+    expect((request.headers as Headers).get('Authorization')).toBeNull();
+  });
+
+  it('explains when the browser does not retain the session cookie', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        headerName: 'X-CSRF-TOKEN',
+        token: 'csrf-token'
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(session.user), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }))
+      .mockResolvedValueOnce(new Response(null, { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(login({ username: 'listener', password: 'password123' })).rejects.toEqual(
+      new ApiError('Sign-in could not be saved. Allow first-party cookies for this site and try again.', 401)
+    );
   });
 });

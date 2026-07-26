@@ -24,3 +24,12 @@ management:
 
 server:
   port: ${SERVER_PORT:8080}
+  servlet:
+    session:
+      timeout: ${SESSION_TIMEOUT:8h}
+      cookie:
+        name: MUSIC_APP_SESSION
+        http-only: true
+        # Local HTTP needs false; every HTTPS deployment must set SESSION_COOKIE_SECURE=true.
+        secure: ${SESSION_COOKIE_SECURE:false}
+        same-site: strict

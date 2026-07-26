@@ -6,17 +6,22 @@ import com.musicapp.common.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.web.authentication.session.ChangeSessionIdAuthenticationStrategy;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class AuthControllerTest {
@@ -29,7 +34,11 @@ class AuthControllerTest {
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
 
-        mockMvc = MockMvcBuilders.standaloneSetup(new AuthController(authService))
+        mockMvc = MockMvcBuilders.standaloneSetup(new AuthController(
+                        authService,
+                        new HttpSessionSecurityContextRepository(),
+                        new ChangeSessionIdAuthenticationStrategy()
+                ))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
                 .build();
@@ -38,6 +47,7 @@ class AuthControllerTest {
     @Test
     void registerReturnsCreatedListener () throws Exception {
         authService.registerResponse = authResponse();
+        authService.loginResponse = authenticatedListener();
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -57,7 +67,8 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.emailAddress").value("musiclover42@example.com"))
                 .andExpect(jsonPath("$.countryName").value("United States"))
                 .andExpect(jsonPath("$.planName").value("free"))
-                .andExpect(jsonPath("$.balance").value(0));
+                .andExpect(jsonPath("$.balance").value(0))
+                .andExpect(request().sessionAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, org.hamcrest.Matchers.notNullValue()));
     }
 
     @Test
@@ -86,7 +97,7 @@ class AuthControllerTest {
 
     @Test
     void loginReturnsListener () throws Exception {
-        authService.loginResponse = authResponse();
+        authService.loginResponse = authenticatedListener();
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -99,7 +110,8 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.listenerId").value(1))
                 .andExpect(jsonPath("$.username").value("musiclover42"))
-                .andExpect(jsonPath("$.emailAddress").value("musiclover42@example.com"));
+                .andExpect(jsonPath("$.emailAddress").value("musiclover42@example.com"))
+                .andExpect(request().sessionAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, org.hamcrest.Matchers.notNullValue()));
     }
 
     @Test
@@ -133,9 +145,16 @@ class AuthControllerTest {
         );
     }
 
+    private AuthenticatedListener authenticatedListener () {
+        return new AuthenticatedListener(
+                authResponse(),
+                new UsernamePasswordAuthenticationToken("musiclover42", null, List.of())
+        );
+    }
+
     static class FakeAuthService extends AuthService {
         private AuthResponse registerResponse;
-        private AuthResponse loginResponse;
+        private AuthenticatedListener loginResponse;
         private RuntimeException loginException;
 
         FakeAuthService () {
@@ -148,7 +167,7 @@ class AuthControllerTest {
         }
 
         @Override
-        public AuthResponse login (LoginRequest request) {
+        public AuthenticatedListener login (LoginRequest request) {
             if (loginException != null) {
                 throw loginException;
             }

@@ -23,7 +23,6 @@ export type RegisterRequest = LoginRequest & {
 
 export type AuthSession = {
   user: AuthUser;
-  basicAuth: string;
 };
 
 export type ApiErrorResponse = {

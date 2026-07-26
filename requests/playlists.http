@@ -1,3 +1,5 @@
+### Requires the session cookie and CSRF variables created by requests/listener-actions.http.
+
 ### List playlists
 GET http://localhost:8080/api/playlists
 
@@ -15,8 +17,8 @@ GET http://localhost:8080/api/playlists/1
 
 ### Create playlist
 POST http://localhost:8080/api/playlists
-Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
 Content-Type: application/json
+{{csrfHeader}}: {{csrfToken}}
 
 {
   "name": "Late Night Finds",
@@ -27,8 +29,8 @@ Content-Type: application/json
 
 ### Update playlist
 PUT http://localhost:8080/api/playlists/6
-Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
 Content-Type: application/json
+{{csrfHeader}}: {{csrfToken}}
 
 {
   "name": "My Favorites",
@@ -37,38 +39,36 @@ Content-Type: application/json
   "pictureUrl": null
 }
 
-### Get Available Generated Playlists
+### Get available generated playlists
 GET http://localhost:8080/api/playlists/generated
-Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
 
-### Get Specific Generated Playlist
-GET http://localhost:8080/api/playlists/generated-playlists/{playlistId}
-Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+### Get a specific generated playlist
+GET http://localhost:8080/api/playlists/generated/DAILY_REWIND
 
 ### Delete playlist
 DELETE http://localhost:8080/api/playlists/6
-Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+{{csrfHeader}}: {{csrfToken}}
 
 ### Join playlist
 PUT http://localhost:8080/api/playlists/1/members/me
-Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+{{csrfHeader}}: {{csrfToken}}
 
 ### Leave playlist
 DELETE http://localhost:8080/api/playlists/1/members/me
-Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+{{csrfHeader}}: {{csrfToken}}
 
 ### Add song to playlist
 PUT http://localhost:8080/api/playlists/1/songs/10
-Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+{{csrfHeader}}: {{csrfToken}}
 
 ### Remove song from playlist
 DELETE http://localhost:8080/api/playlists/1/songs/10
-Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+{{csrfHeader}}: {{csrfToken}}
 
 ### Vote for playlist song
 PUT http://localhost:8080/api/playlists/1/songs/9/vote
-Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+{{csrfHeader}}: {{csrfToken}}
 
 ### Remove playlist song vote
 DELETE http://localhost:8080/api/playlists/1/songs/9/vote
-Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+{{csrfHeader}}: {{csrfToken}}

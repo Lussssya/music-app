@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AUTH_SESSION_INVALID_EVENT } from '../api/client';
+import { AUTH_SESSION_INVALID_EVENT, getCurrentUser, logout as endServerSession } from '../api/client';
 import type { AuthSession, AuthUser } from '../types';
 
-const STORAGE_KEY = 'music-app-auth-session';
-
 export function useAuthSession() {
-  const [session, setSessionState] = useState<AuthSession | null>(() => readSession());
+  const [session, setSessionState] = useState<AuthSession | null>(null);
+  const [restoring, setRestoring] = useState(true);
 
   useEffect(() => {
     const clearInvalidSession = () => {
-      localStorage.removeItem(STORAGE_KEY);
       setSessionState(null);
     };
 
@@ -17,39 +15,51 @@ export function useAuthSession() {
     return () => window.removeEventListener(AUTH_SESSION_INVALID_EVENT, clearInvalidSession);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    void getCurrentUser()
+      .then((user) => {
+        if (active) {
+          setSessionState({ user });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setSessionState(null);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setRestoring(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return useMemo(() => ({
     session,
-    setSession: (nextSession: AuthSession) => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
-      setSessionState(nextSession);
+    restoring,
+    setSession: (user: AuthUser) => {
+      setSessionState({ user });
     },
     updateUser: (user: AuthUser) => {
       setSessionState((currentSession) => {
         if (!currentSession) {
           return null;
         }
-        const nextSession = { ...currentSession, user };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
-        return nextSession;
+        return { ...currentSession, user };
       });
     },
     logout: () => {
-      localStorage.removeItem(STORAGE_KEY);
+      const currentSession = session;
       setSessionState(null);
+      if (currentSession) {
+        void endServerSession(currentSession).catch(() => undefined);
+      }
     }
-  }), [session]);
-}
-
-function readSession(): AuthSession | null {
-  const rawSession = localStorage.getItem(STORAGE_KEY);
-  if (!rawSession) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(rawSession) as AuthSession;
-  } catch {
-    localStorage.removeItem(STORAGE_KEY);
-    return null;
-  }
+  }), [restoring, session]);
 }

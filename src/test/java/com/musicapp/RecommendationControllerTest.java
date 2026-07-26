@@ -65,20 +65,23 @@ class RecommendationControllerTest {
     void recommendationsReturnResponseShape () throws Exception {
         recommendationService.response = List.of(recommendation());
 
-        mockMvc.perform(get("/api/recommendations?limit=3").principal(authentication()))
+        mockMvc.perform(get("/api/recommendations?page=1&size=3").principal(authentication()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].score").value(162.5))
-                .andExpect(jsonPath("$[0].generatedAt").value("2024-03-01T08:30:00Z"))
-                .andExpect(jsonPath("$[0].song.songId").value(3))
-                .andExpect(jsonPath("$[0].song.title").value("Midnight Sun"))
-                .andExpect(jsonPath("$[0].song.mainPerformer.performerId").value(1))
-                .andExpect(jsonPath("$[0].song.mainPerformer.nickname").value("Aurora Sky"))
-                .andExpect(jsonPath("$[0].song.album.albumId").value(2))
-                .andExpect(jsonPath("$[0].song.genres[0]").value("Electronic"))
-                .andExpect(jsonPath("$[0].song.genres[1]").value("Pop"));
+                .andExpect(jsonPath("$.content[0].score").value(162.5))
+                .andExpect(jsonPath("$.content[0].generatedAt").value("2024-03-01T08:30:00Z"))
+                .andExpect(jsonPath("$.content[0].song.songId").value(3))
+                .andExpect(jsonPath("$.content[0].song.title").value("Midnight Sun"))
+                .andExpect(jsonPath("$.content[0].song.mainPerformer.performerId").value(1))
+                .andExpect(jsonPath("$.content[0].song.mainPerformer.nickname").value("Aurora Sky"))
+                .andExpect(jsonPath("$.content[0].song.album.albumId").value(2))
+                .andExpect(jsonPath("$.content[0].song.genres[0]").value("Electronic"))
+                .andExpect(jsonPath("$.content[0].song.genres[1]").value("Pop"))
+                .andExpect(jsonPath("$.number").value(1))
+                .andExpect(jsonPath("$.size").value(3));
 
         assertThat(recommendationService.username).isEqualTo("musiclover42");
-        assertThat(recommendationService.limit).isEqualTo(3);
+        assertThat(recommendationService.page).isEqualTo(1);
+        assertThat(recommendationService.size).isEqualTo(3);
     }
 
     @Test
@@ -87,36 +90,42 @@ class RecommendationControllerTest {
 
         mockMvc.perform(get("/api/recommendations").principal(authentication()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray());
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.number").value(0))
+                .andExpect(jsonPath("$.size").value(20));
 
         assertThat(recommendationService.username).isEqualTo("musiclover42");
-        assertThat(recommendationService.limit).isEqualTo(20);
+        assertThat(recommendationService.page).isZero();
+        assertThat(recommendationService.size).isEqualTo(20);
     }
 
     @Test
     void rebuildRecommendationsReturnResponseShape () throws Exception {
         recommendationService.rebuildResponse = List.of(recommendation());
 
-        mockMvc.perform(post("/api/recommendations/rebuild?limit=2").principal(authentication()))
+        mockMvc.perform(post("/api/recommendations/rebuild?page=2&size=2").principal(authentication()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].score").value(162.5))
-                .andExpect(jsonPath("$[0].song.songId").value(3))
-                .andExpect(jsonPath("$[0].song.title").value("Midnight Sun"));
+                .andExpect(jsonPath("$.content[0].score").value(162.5))
+                .andExpect(jsonPath("$.content[0].song.songId").value(3))
+                .andExpect(jsonPath("$.content[0].song.title").value("Midnight Sun"))
+                .andExpect(jsonPath("$.number").value(2))
+                .andExpect(jsonPath("$.size").value(2));
 
         assertThat(recommendationService.rebuildUsername).isEqualTo("musiclover42");
-        assertThat(recommendationService.rebuildLimit).isEqualTo(2);
+        assertThat(recommendationService.rebuildPage).isEqualTo(2);
+        assertThat(recommendationService.rebuildSize).isEqualTo(2);
     }
 
     @Test
     void recommendationBadRequestUsesErrorResponseShape () throws Exception {
-        recommendationService.exception = new BadRequestException("Recommendation limit must be at least 1.");
+        recommendationService.exception = new BadRequestException("Illegal recommendation page or size.");
 
-        mockMvc.perform(get("/api/recommendations?limit=0").principal(authentication()))
+        mockMvc.perform(get("/api/recommendations?size=0").principal(authentication()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Bad Request"))
                 .andExpect(jsonPath("$.timestamp").exists())
-                .andExpect(jsonPath("$.messages[0]").value("Recommendation limit must be at least 1."));
+                .andExpect(jsonPath("$.messages[0]").value("Illegal recommendation page or size."));
     }
 
     private UsernamePasswordAuthenticationToken authentication () {
@@ -146,42 +155,36 @@ class RecommendationControllerTest {
         private List<RecommendationResponse> rebuildResponse = List.of();
         private RuntimeException exception;
         private String username;
-        private int limit;
+        private int page;
+        private int size;
         private String rebuildUsername;
-        private int rebuildLimit;
+        private int rebuildPage;
+        private int rebuildSize;
 
         FakeRecommendationService () {
             super(null, null);
         }
 
         @Override
-        public List<RecommendationResponse> getRecommendations (String username, int limit) {
-            this.username = username;
-            this.limit = limit;
-            if (exception != null) {
-                throw exception;
-            }
-            return response;
-        }
-
-        @Override
         public Page<RecommendationResponse> getRecommendations (String username, int page, int size) {
-            return new PageImpl<>(getRecommendations(username, size), PageRequest.of(page, size), response.size());
-        }
-
-        @Override
-        public List<RecommendationResponse> rebuildRecommendations (String username, int limit) {
-            this.rebuildUsername = username;
-            this.rebuildLimit = limit;
+            this.username = username;
+            this.page = page;
+            this.size = size;
             if (exception != null) {
                 throw exception;
             }
-            return rebuildResponse;
+            return new PageImpl<>(response, PageRequest.of(page, size), response.size());
         }
 
         @Override
         public Page<RecommendationResponse> rebuildRecommendations (String username, int page, int size) {
-            return new PageImpl<>(rebuildRecommendations(username, size), PageRequest.of(page, size), rebuildResponse.size());
+            this.rebuildUsername = username;
+            this.rebuildPage = page;
+            this.rebuildSize = size;
+            if (exception != null) {
+                throw exception;
+            }
+            return new PageImpl<>(rebuildResponse, PageRequest.of(page, size), rebuildResponse.size());
         }
     }
 

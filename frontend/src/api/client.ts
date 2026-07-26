@@ -38,6 +38,14 @@ type RequestOptions = {
   session?: AuthSession | null;
 };
 
+type CsrfToken = {
+  headerName: string;
+  token: string;
+};
+
+let csrfToken: CsrfToken | null = null;
+let csrfTokenPromise: Promise<CsrfToken> | null = null;
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers({
     Accept: 'application/json'
@@ -46,14 +54,16 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (options.body !== undefined) {
     headers.set('Content-Type', 'application/json');
   }
-  if (options.session?.basicAuth) {
-    headers.set('Authorization', options.session.basicAuth);
+  if (requiresCsrfToken(options.method)) {
+    const token = await getCsrfToken();
+    headers.set(token.headerName, token.token);
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: options.method ?? 'GET',
     headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body)
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    credentials: 'include'
   });
 
   if (!response.ok) {
@@ -70,18 +80,43 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   return response.json() as Promise<T>;
 }
 
-export function login(request: LoginRequest): Promise<AuthUser> {
-  return apiRequest<AuthUser>('/auth/login', {
+export async function login(request: LoginRequest): Promise<AuthUser> {
+  await apiRequest<AuthUser>('/auth/login', {
     method: 'POST',
     body: request
   });
+  return verifyAuthenticatedSession();
 }
 
-export function register(request: RegisterRequest): Promise<AuthUser> {
-  return apiRequest<AuthUser>('/auth/register', {
+export async function register(request: RegisterRequest): Promise<AuthUser> {
+  await apiRequest<AuthUser>('/auth/register', {
     method: 'POST',
     body: request
   });
+  return verifyAuthenticatedSession();
+}
+
+export function getCurrentUser(): Promise<AuthUser> {
+  return apiRequest<AuthUser>('/auth/me');
+}
+
+async function verifyAuthenticatedSession(): Promise<AuthUser> {
+  try {
+    return await getCurrentUser();
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      throw new ApiError('Sign-in could not be saved. Allow first-party cookies for this site and try again.', 401);
+    }
+    throw error;
+  }
+}
+
+export async function logout(session: AuthSession): Promise<void> {
+  try {
+    await apiRequest<void>('/auth/logout', { method: 'POST', session });
+  } finally {
+    clearCsrfToken();
+  }
 }
 
 export function getGenres(): Promise<Genre[]> {
@@ -288,8 +323,37 @@ export function rebuildRecommendations(session: AuthSession, page: number, size 
   });
 }
 
-export function createBasicAuth(username: string, password: string): string {
-  return `Basic ${window.btoa(`${username}:${password}`)}`;
+export function clearCsrfToken(): void {
+  csrfToken = null;
+  csrfTokenPromise = null;
+}
+
+function requiresCsrfToken(method?: string): boolean {
+  return !['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes((method ?? 'GET').toUpperCase());
+}
+
+async function getCsrfToken(): Promise<CsrfToken> {
+  if (csrfToken) {
+    return csrfToken;
+  }
+  if (!csrfTokenPromise) {
+    csrfTokenPromise = fetch(`${API_BASE_URL}/auth/csrf`, {
+      headers: { Accept: 'application/json' },
+      credentials: 'include'
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new ApiError(await errorMessage(response), response.status);
+        }
+        const nextToken = await response.json() as CsrfToken;
+        csrfToken = nextToken;
+        return nextToken;
+      })
+      .finally(() => {
+        csrfTokenPromise = null;
+      });
+  }
+  return csrfTokenPromise;
 }
 
 async function errorMessage(response: Response): Promise<string> {

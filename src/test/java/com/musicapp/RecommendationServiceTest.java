@@ -26,34 +26,40 @@ class RecommendationServiceTest {
         final CapturingJdbcOperations jdbcOperations = new CapturingJdbcOperations();
         final RecommendationService recommendationService = new RecommendationService(listenerRepository(), jdbcOperations.proxy());
 
-        recommendationService.getRecommendations(USERNAME, 10);
+        recommendationService.getRecommendations(USERNAME, 0, 10);
 
         assertThat(jdbcOperations.sql)
                 .contains("ORDER BY lr.recommendation_score DESC")
                 .contains("lr.generated_at DESC")
                 .contains("LIMIT ?");
-        assertThat(jdbcOperations.arguments).containsExactly(LISTENER_ID, 10);
+        assertThat(jdbcOperations.arguments).containsExactly(LISTENER_ID, 10, 0);
     }
 
     @Test
-    void recommendationLimitIsCapped () {
+    void recommendationPageSizeCannotExceedMaximum () {
         CapturingJdbcOperations jdbcOperations = new CapturingJdbcOperations();
         RecommendationService recommendationService = new RecommendationService(
                 listenerRepository(),
                 jdbcOperations.proxy()
         );
 
-        recommendationService.getRecommendations(USERNAME, 150);
-
-        assertThat(jdbcOperations.arguments).containsExactly(LISTENER_ID, 100);
+        assertThatThrownBy(() -> recommendationService.getRecommendations(USERNAME, 0, 26))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Illegal recommendation page or size.");
+        assertThat(jdbcOperations.queryCount).isZero();
     }
 
     @Test
-    void recommendationLimitMustBePositive () {
+    void recommendationPageAndSizeMustBeValid () {
         final CapturingJdbcOperations jdbcOperations = new CapturingJdbcOperations();
         final RecommendationService recommendationService = new RecommendationService(listenerRepository(), jdbcOperations.proxy());
 
-        assertThatThrownBy(() -> recommendationService.getRecommendations(USERNAME, 0)).isInstanceOf(BadRequestException.class).hasMessage("Recommendation limit must be at least 1.");
+        assertThatThrownBy(() -> recommendationService.getRecommendations(USERNAME, -1, 20))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Illegal recommendation page or size.");
+        assertThatThrownBy(() -> recommendationService.getRecommendations(USERNAME, 0, 0))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Illegal recommendation page or size.");
 
         assertThat(jdbcOperations.queryCount).isZero();
     }
@@ -63,7 +69,7 @@ class RecommendationServiceTest {
         final CapturingJdbcOperations jdbcOperations = new CapturingJdbcOperations();
         final RecommendationService recommendationService = new RecommendationService(listenerRepository(), jdbcOperations.proxy());
 
-        recommendationService.rebuildRecommendations(USERNAME, 5);
+        recommendationService.rebuildRecommendations(USERNAME, 0, 5);
 
         assertThat(jdbcOperations.updateSqls).hasSize(2);
         assertThat(jdbcOperations.updateSqls.get(0)).contains("DELETE FROM listener_recommendation").contains("WHERE listener_id = ?");
@@ -73,12 +79,14 @@ class RecommendationServiceTest {
                 .contains("listener_preferred_genre")
                 .contains("listener_following_performer")
                 .contains("listener_performer_attitude")
+                .contains("blocked_artist_penalty")
+                .contains("* 20.0 AS penalty")
                 .contains("blocked_song")
                 .contains("blocked_performer")
                 .contains("INSERT INTO listener_recommendation");
         assertThat(jdbcOperations.updateArguments.get(0)).containsExactly(LISTENER_ID);
-        assertThat(jdbcOperations.updateArguments.get(1)).containsExactly(LISTENER_ID);
-        assertThat(jdbcOperations.arguments).containsExactly(LISTENER_ID, 5);
+        assertThat(jdbcOperations.updateArguments.get(1)).containsExactly(LISTENER_ID, 100);
+        assertThat(jdbcOperations.arguments).containsExactly(LISTENER_ID, 5, 0);
     }
 
     private ListenerRepository listenerRepository () {
@@ -130,6 +138,15 @@ class RecommendationServiceTest {
                             updateSqls.add((String) args[0]);
                             updateArguments.add((Object[]) args[1]);
                             return 1;
+                        }
+                        if (method.getName().equals("queryForObject")) {
+                            final String query = (String) args[0];
+                            if (query.contains("song_stream")) {
+                                return 0L;
+                            }
+                            if (query.contains("listener_recommendation")) {
+                                return 1L;
+                            }
                         }
                         throw new UnsupportedOperationException(method.getName());
                     }

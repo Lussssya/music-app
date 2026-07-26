@@ -1,12 +1,12 @@
 import { FormEvent, useState } from 'react';
 import { LogIn, UserPlus } from 'lucide-react';
-import { createBasicAuth, login, register } from '../api/client';
-import type { AuthSession, LoginRequest, RegisterRequest } from '../types';
+import { login, register } from '../api/client';
+import type { AuthUser, LoginRequest, RegisterRequest } from '../types';
 
 type AuthMode = 'login' | 'register';
 
 type AuthPanelProps = {
-  onAuthenticated: (session: AuthSession) => void;
+  onAuthenticated: (user: AuthUser) => void;
 };
 
 const initialLogin: LoginRequest = {
@@ -38,12 +38,8 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
     setLoading(true);
 
     try {
-      const credentials = isLogin ? loginForm : registerForm;
       const user = isLogin ? await login(loginForm) : await register(registerForm);
-      onAuthenticated({
-        user,
-        basicAuth: createBasicAuth(credentials.username, credentials.password)
-      });
+      onAuthenticated(user);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Something went wrong.');
     } finally {

@@ -8,6 +8,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -54,17 +55,26 @@ public class AuthService {
     }
 
     @Transactional(readOnly = true)
-    public AuthResponse login (LoginRequest request) {
+    public AuthenticatedListener login (LoginRequest request) {
+        final String username = request.username().trim();
+        final Authentication authentication;
         try {
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.username(), request.password())
+            authentication = authenticationManager.authenticate(
+                    UsernamePasswordAuthenticationToken.unauthenticated(username, request.password())
             );
         } catch (BadCredentialsException ex) {
             throw new BadRequestException("Invalid username or password.");
         }
 
-        final Listener listener = listenerRepository.findByUsername(request.username()).orElseThrow(() -> new BadRequestException("Invalid username or password."));
-        return toResponse(listener);
+        final Listener listener = listenerRepository.findByUsername(username).orElseThrow(() -> new BadRequestException("Invalid username or password."));
+        return new AuthenticatedListener(toResponse(listener), authentication);
+    }
+
+    @Transactional(readOnly = true)
+    public AuthResponse getCurrentUser (String username) {
+        return listenerRepository.findByUsername(username)
+                .map(this::toResponse)
+                .orElseThrow(() -> new BadRequestException("The signed-in listener no longer exists."));
     }
 
     private boolean countryExists (String countryName) {

@@ -41,10 +41,7 @@ describe('AuthPanel', () => {
     await user.click(loginSubmitButton());
 
     expect(login).toHaveBeenCalledWith({ username: 'listener42', password: 'password123' });
-    expect(onAuthenticated).toHaveBeenCalledWith({
-      user: authUser,
-      basicAuth: `Basic ${window.btoa('listener42:password123')}`
-    });
+    expect(onAuthenticated).toHaveBeenCalledWith(authUser);
   });
 
   it('shows an API login error without authenticating', async () => {

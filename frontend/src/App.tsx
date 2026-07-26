@@ -26,8 +26,12 @@ const tabs: Array<{ id: TabId; label: string; icon: typeof Library }> = [
 ];
 
 export function App() {
-  const { session, setSession, logout } = useAuthSession();
+  const { session, restoring, setSession, logout } = useAuthSession();
   const [activeTab, setActiveTab] = useState<TabId>('catalog');
+
+  if (restoring) {
+    return <main className="auth-layout" aria-busy="true">Restoring your session…</main>;
+  }
 
   if (!session) {
     return <AuthPanel onAuthenticated={setSession} />;

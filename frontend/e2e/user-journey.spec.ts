@@ -25,14 +25,29 @@ const song = {
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.clear());
+  let authenticated = false;
 
   await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname;
 
+    if (path === '/api/auth/csrf') {
+      await route.fulfill({ json: { headerName: 'X-CSRF-TOKEN', token: 'browser-csrf-token' } });
+      return;
+    }
+    if (path === '/api/auth/me') {
+      await route.fulfill(authenticated ? { json: user } : { status: 401, body: '' });
+      return;
+    }
     if (path === '/api/auth/register' || path === '/api/auth/login') {
+      authenticated = true;
       await route.fulfill({ status: path.endsWith('register') ? 201 : 200, json: user });
+      return;
+    }
+    if (path === '/api/auth/logout') {
+      authenticated = false;
+      await route.fulfill({ status: 204, body: '' });
       return;
     }
     if (path === '/api/songs') {
@@ -60,8 +75,12 @@ test.beforeEach(async ({ page }) => {
       } });
       return;
     }
+    if (path === '/api/recommendations') {
+      await route.fulfill({ json: pageResponse([]) });
+      return;
+    }
     if (path === '/api/recommendations/rebuild') {
-      await route.fulfill({ json: [{ score: 42.5, generatedAt: '2026-07-12T00:00:00Z', song }] });
+      await route.fulfill({ json: pageResponse([{ score: 42.5, generatedAt: '2026-07-12T00:00:00Z', song }]) });
       return;
     }
 
@@ -93,16 +112,13 @@ test('registration to recommendations journey works in a browser', async ({ page
   await expect(page.getByText('Playlist created.')).toBeVisible();
 
   await page.getByRole('button', { name: 'Recommendations' }).click();
-  await page.getByRole('button', { name: 'Rebuild' }).click();
-  await expect(page.getByText('Recommendations rebuilt.')).toBeVisible();
+  await page.getByRole('button', { name: 'Rebuild 100' }).click();
+  await expect(page.getByText('100 recommendations rebuilt.')).toBeVisible();
   await expect(page.getByText('Score 42.5000')).toBeVisible();
 });
 
 test('a stale authenticated session returns to login', async ({ page }) => {
-  await page.addInitScript((storedUser) => {
-    localStorage.setItem('music-app-auth-session', JSON.stringify({ user: storedUser, basicAuth: 'Basic expired' }));
-  }, user);
-
+  await page.route('**/api/auth/me', async (route) => route.fulfill({ json: user }));
   await page.route('**/api/listener/me/songs/1', async (route) => route.fulfill({ status: 401, body: '' }));
   await page.goto('/');
   await page.getByRole('button', { name: 'Actions' }).click();
@@ -111,3 +127,15 @@ test('a stale authenticated session returns to login', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Back-office shell for testing the music platform.' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Login' }).last()).toBeVisible();
 });
+
+function pageResponse<T>(content: T[]) {
+  return {
+    content,
+    number: 0,
+    size: 20,
+    totalElements: content.length,
+    totalPages: content.length ? 1 : 0,
+    first: true,
+    last: true
+  };
+}

@@ -1,7 +1,8 @@
-### Get recommendations for the authenticated listener
-GET http://localhost:8080/api/recommendations
-Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+### Requires the session cookie created by requests/listener-actions.http.
 
-### Limit recommendations
-GET http://localhost:8080/api/recommendations?limit=3
-Authorization: Basic bXVzaWNsb3ZlcjQyOnBhc3N3b3JkMTIz
+### Get recommendations for the authenticated listener
+GET http://localhost:8080/api/recommendations?page=0&size=20
+
+### Rebuild 100 recommendations and return the first page. Run the CSRF request first.
+POST http://localhost:8080/api/recommendations/rebuild?page=0&size=20
+{{csrfHeader}}: {{csrfToken}}
