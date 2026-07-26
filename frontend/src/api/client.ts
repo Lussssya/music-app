@@ -104,6 +104,10 @@ export function getSongs(params: URLSearchParams): Promise<Song[]> {
   return apiRequest<Song[]>(`/songs?${params.toString()}`);
 }
 
+export function getSong(songId: string): Promise<Song> {
+  return apiRequest<Song>(`/songs/${songId}`);
+}
+
 export function getPerformers(search: string): Promise<Performer[]> {
   const params = new URLSearchParams();
   if (search.trim()) {

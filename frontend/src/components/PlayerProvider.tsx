@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useContext, useEffect, useRef, useState } from 'react';
-import { ListMusic, Pause, Play, SkipBack, SkipForward, Trash2, Volume2, X } from 'lucide-react';
+import { History, ListMusic, Pause, Play, Repeat, Shuffle, SkipBack, SkipForward, Trash2, Volume2, X } from 'lucide-react';
 import { skipSong, streamSong } from '../api/client';
 import type { AuthSession, Song } from '../types';
 
@@ -7,12 +7,15 @@ type PlayerContextValue = {
   currentSong: Song | null;
   isPlaying: boolean;
   playNow: (song: Song, queue?: Song[]) => void;
+  playQueue: (songs: Song[], startIndex?: number) => void;
   addToQueue: (song: Song) => void;
   togglePlayback: () => void;
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
-const QUEUE_STORAGE_KEY = 'music-app-play-queue';
+const PLAYER_STORAGE_KEY = 'music-app-player-state';
+type RepeatMode = 'off' | 'all' | 'one';
+type PlayerSnapshot = { currentSong: Song | null; queue: Song[]; history: Song[]; volume: number; shuffle: boolean; repeatMode: RepeatMode };
 
 export function usePlayer() {
   const player = useContext(PlayerContext);
@@ -23,15 +26,24 @@ export function usePlayer() {
 export function PlayerProvider({ session, children }: { session: AuthSession; children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentSongRef = useRef<Song | null>(null);
-  const queueRef = useRef<Song[]>([]);
+  const snapshot = useRef(restorePlayer(session.user.listenerId)).current;
+  const queueRef = useRef<Song[]>(snapshot.queue);
+  const historyRef = useRef<Song[]>(snapshot.history);
+  const repeatRef = useRef<RepeatMode>(snapshot.repeatMode);
+  const shuffleRef = useRef(snapshot.shuffle);
   const recordedRef = useRef(false);
+  const listenedSecondsRef = useRef(0);
+  const lastAudioTimeRef = useRef(0);
   const playStartedAtRef = useRef(0);
-  const [currentSong, setCurrentSong] = useState<Song | null>(null);
-  const [queue, setQueue] = useState<Song[]>(() => restoreQueue());
+  const [currentSong, setCurrentSong] = useState<Song | null>(snapshot.currentSong);
+  const [queue, setQueue] = useState<Song[]>(snapshot.queue);
+  const [history, setHistory] = useState<Song[]>(snapshot.history);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(0.8);
+  const [volume, setVolume] = useState(snapshot.volume);
+  const [shuffle, setShuffle] = useState(snapshot.shuffle);
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>(snapshot.repeatMode);
   const [queueOpen, setQueueOpen] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
 
@@ -43,7 +55,10 @@ export function PlayerProvider({ session, children }: { session: AuthSession; ch
 
     const updateTime = () => {
       setCurrentTime(audio.currentTime);
-      const meaningfulListen = audio.currentTime >= 30 || (audio.duration > 0 && audio.currentTime / audio.duration >= 0.5);
+      const elapsed = audio.currentTime - lastAudioTimeRef.current;
+      if (elapsed > 0 && elapsed <= 2) listenedSecondsRef.current += elapsed;
+      lastAudioTimeRef.current = audio.currentTime;
+      const meaningfulListen = listenedSecondsRef.current >= 30 || (audio.duration > 0 && listenedSecondsRef.current >= audio.duration * 0.5);
       if (meaningfulListen && currentSongRef.current && !recordedRef.current) {
         recordedRef.current = true;
         void streamSong(session, String(currentSongRef.current.songId));
@@ -79,18 +94,24 @@ export function PlayerProvider({ session, children }: { session: AuthSession; ch
 
   useEffect(() => {
     queueRef.current = queue;
-    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
-  }, [queue]);
+    historyRef.current = history;
+    repeatRef.current = repeatMode;
+    shuffleRef.current = shuffle;
+    localStorage.setItem(`${PLAYER_STORAGE_KEY}:${session.user.listenerId}`, JSON.stringify({ currentSong, queue, history, volume, shuffle, repeatMode } satisfies PlayerSnapshot));
+  }, [currentSong, history, queue, repeatMode, session.user.listenerId, shuffle, volume]);
 
   function startSong(song: Song) {
     const audio = audioRef.current;
     if (!audio) return;
     currentSongRef.current = song;
     setCurrentSong(song);
+    setHistory((items) => [song, ...items.filter((item) => item.songId !== song.songId)].slice(0, 20));
     setPlaybackError(null);
     setCurrentTime(0);
     setDuration(0);
     recordedRef.current = false;
+    listenedSecondsRef.current = 0;
+    lastAudioTimeRef.current = 0;
     playStartedAtRef.current = Date.now();
     audio.src = song.songUrl ?? '';
     if (!song.songUrl) {
@@ -107,6 +128,13 @@ export function PlayerProvider({ session, children }: { session: AuthSession; ch
     startSong(song);
   }
 
+  function playQueue(songs: Song[], startIndex = 0) {
+    const next = songs[startIndex];
+    if (!next) return;
+    const upcoming = songs.filter((_, index) => index !== startIndex);
+    playNow(next, upcoming);
+  }
+
   function addToQueue(song: Song) {
     if (currentSongRef.current?.songId === song.songId || queueRef.current.some((item) => item.songId === song.songId)) return;
     const nextQueue = [...queueRef.current, song];
@@ -117,7 +145,10 @@ export function PlayerProvider({ session, children }: { session: AuthSession; ch
   function togglePlayback() {
     const audio = audioRef.current;
     if (!audio || !currentSong?.songUrl) return;
-    if (audio.paused) void audio.play().catch(() => setPlaybackError('Playback was blocked. Press play to try again.'));
+    if (audio.paused) {
+      if (!audio.src) audio.src = currentSong.songUrl;
+      void audio.play().catch(() => setPlaybackError('Playback was blocked. Press play to try again.'));
+    }
     else audio.pause();
   }
 
@@ -127,7 +158,12 @@ export function PlayerProvider({ session, children }: { session: AuthSession; ch
       recordedRef.current = true;
       void skipSong(session, String(playingSong.songId));
     }
-    const [next, ...rest] = queueRef.current;
+    if (!countAsSkip && repeatRef.current === 'one' && playingSong) { startSong(playingSong); return; }
+    let upcoming = queueRef.current;
+    if (!upcoming.length && repeatRef.current === 'all' && historyRef.current.length) upcoming = [...historyRef.current].reverse();
+    const nextIndex = shuffleRef.current && upcoming.length > 1 ? Math.floor(Math.random() * upcoming.length) : 0;
+    const next = upcoming[nextIndex];
+    const rest = upcoming.filter((_, index) => index !== nextIndex);
     queueRef.current = rest;
     setQueue(rest);
     if (next) startSong(next);
@@ -143,6 +179,12 @@ export function PlayerProvider({ session, children }: { session: AuthSession; ch
   function previous() {
     const audio = audioRef.current;
     if (!audio) return;
+    if (audio.currentTime <= 3 && historyRef.current.length > 1) {
+      const previousSong = historyRef.current[1];
+      const nextQueue = currentSongRef.current ? [currentSongRef.current, ...queueRef.current] : queueRef.current;
+      queueRef.current = nextQueue; setQueue(nextQueue); startSong(previousSong);
+      return;
+    }
     audio.currentTime = 0;
     setCurrentTime(0);
   }
@@ -150,6 +192,7 @@ export function PlayerProvider({ session, children }: { session: AuthSession; ch
   function seek(value: number) {
     if (!audioRef.current) return;
     audioRef.current.currentTime = value;
+    lastAudioTimeRef.current = value;
     setCurrentTime(value);
   }
 
@@ -158,8 +201,10 @@ export function PlayerProvider({ session, children }: { session: AuthSession; ch
     if (audioRef.current) audioRef.current.volume = value;
   }
 
+  function cycleRepeat() { setRepeatMode((mode) => mode === 'off' ? 'all' : mode === 'all' ? 'one' : 'off'); }
+
   return (
-    <PlayerContext.Provider value={{ currentSong, isPlaying, playNow, addToQueue, togglePlayback }}>
+    <PlayerContext.Provider value={{ currentSong, isPlaying, playNow, playQueue, addToQueue, togglePlayback }}>
       {children}
       {(currentSong || queue.length > 0) && (
         <div className="player-shell" aria-label="Audio player">
@@ -173,11 +218,13 @@ export function PlayerProvider({ session, children }: { session: AuthSession; ch
 
           <div className="player-center">
             <div className="player-controls">
+              <button className={shuffle ? 'active' : ''} type="button" aria-label="Toggle shuffle" onClick={() => setShuffle((value) => !value)}><Shuffle size={17} /></button>
               <button type="button" aria-label="Restart track" onClick={previous} disabled={!currentSong}><SkipBack size={19} /></button>
               <button className="play-toggle" type="button" aria-label={isPlaying ? 'Pause' : 'Play'} onClick={togglePlayback} disabled={!currentSong}>
                 {isPlaying ? <Pause size={20} /> : <Play size={20} />}
               </button>
               <button type="button" aria-label="Next track" onClick={() => advance(true)} disabled={!currentSong && !queue.length}><SkipForward size={19} /></button>
+              <button className={repeatMode !== 'off' ? 'active' : ''} type="button" aria-label={`Repeat: ${repeatMode}`} onClick={cycleRepeat}><Repeat size={17} /><small>{repeatMode === 'one' ? '1' : ''}</small></button>
             </div>
             <div className="progress-row">
               <span>{formatTime(currentTime)}</span>
@@ -207,6 +254,7 @@ export function PlayerProvider({ session, children }: { session: AuthSession; ch
                 </div>
               ))}
               {!queue.length && <p>Your queue is empty.</p>}
+              {history.length > 0 && <div className="queue-history"><History size={15} /> Recently played: {history.slice(0, 3).map((song) => song.title).join(', ')}</div>}
               {queue.length > 0 && <button className="clear-queue" type="button" onClick={() => setQueue([])}>Clear queue</button>}
             </aside>
           )}
@@ -222,10 +270,11 @@ function formatTime(seconds: number) {
   return `${minutes}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
 }
 
-function restoreQueue(): Song[] {
+function restorePlayer(listenerId: number): PlayerSnapshot {
   try {
-    return JSON.parse(localStorage.getItem(QUEUE_STORAGE_KEY) ?? '[]') as Song[];
+    const stored = JSON.parse(localStorage.getItem(`${PLAYER_STORAGE_KEY}:${listenerId}`) ?? '{}') as Partial<PlayerSnapshot>;
+    return { currentSong: stored.currentSong ?? null, queue: Array.isArray(stored.queue) ? stored.queue : [], history: Array.isArray(stored.history) ? stored.history : [], volume: typeof stored.volume === 'number' ? stored.volume : 0.8, shuffle: Boolean(stored.shuffle), repeatMode: stored.repeatMode ?? 'off' };
   } catch {
-    return [];
+    return { currentSong: null, queue: [], history: [], volume: 0.8, shuffle: false, repeatMode: 'off' };
   }
 }

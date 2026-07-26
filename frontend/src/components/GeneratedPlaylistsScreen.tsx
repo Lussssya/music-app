@@ -13,7 +13,7 @@ type GeneratedPlaylistsScreenProps = {
 const cardColors = ['mint', 'violet', 'coral', 'sky', 'gold', 'plum', 'teal', 'rose', 'blue'];
 
 export function GeneratedPlaylistsScreen({ session }: GeneratedPlaylistsScreenProps) {
-  const { playNow, addToQueue } = usePlayer();
+  const { playNow, playQueue, addToQueue } = usePlayer();
   const { isFavorite, toggleFavorite } = useLibrary();
   const [playlists, setPlaylists] = useState<GeneratedPlaylistSummary[]>([]);
   const [selected, setSelected] = useState<GeneratedPlaylist | null>(null);
@@ -115,7 +115,7 @@ export function GeneratedPlaylistsScreen({ session }: GeneratedPlaylistsScreenPr
               <h2>{selected.name}</h2>
               <p>{selected.description} · {selected.songs.length} songs</p>
             </div>
-            {!!selected.songs.length && <div className="generated-detail-actions"><button type="button" onClick={() => void saveAsPlaylist()} disabled={saving}><Save size={17} /> {saving ? 'Saving…' : 'Save playlist'}</button><button className="primary-action" type="button" onClick={() => playNow(selected.songs[0], selected.songs.slice(1))}><Play size={17} fill="currentColor" /> Play</button></div>}
+            {!!selected.songs.length && <div className="generated-detail-actions"><button type="button" onClick={() => void saveAsPlaylist()} disabled={saving}><Save size={17} /> {saving ? 'Saving…' : 'Save playlist'}</button><button className="primary-action" type="button" onClick={() => playQueue(selected.songs)}><Play size={17} fill="currentColor" /> Play</button></div>}
           </div>
           {selected.songs.length ? (
             <ol className="generated-song-list">

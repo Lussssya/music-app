@@ -1,11 +1,12 @@
 import { FormEvent, useMemo, useState } from 'react';
-import { Check, ListPlus, Pencil, Plus, RefreshCw, Search, Trash2, UserPlus, UserX, X } from 'lucide-react';
+import { Check, ListPlus, Pencil, Play, Plus, RefreshCw, Search, Trash2, UserPlus, UserX, X } from 'lucide-react';
 import {
   addPlaylistMember, addPlaylistSong, createPlaylist, deletePlaylist, getPlaylist, getPlaylists, joinPlaylist,
-  leavePlaylist, removePlaylistMember, removePlaylistSong, updatePlaylist
+  getSong, leavePlaylist, removePlaylistMember, removePlaylistSong, updatePlaylist
 } from '../api/client';
 import type { AuthSession, Playlist, PlaylistRequest, PlaylistSummary } from '../types';
 import { EmptyState, StatusMessage, displayError } from './ScreenHelpers';
+import { usePlayer } from './PlayerProvider';
 
 type PlaylistsScreenProps = { session: AuthSession };
 
@@ -19,6 +20,7 @@ const coverOptions = [
 const emptyForm: PlaylistRequest = { name: '', type: 'private', playlistUrl: null, pictureUrl: coverOptions[0] };
 
 export function PlaylistsScreen({ session }: PlaylistsScreenProps) {
+  const { playQueue } = usePlayer();
   const [search, setSearch] = useState('');
   const [type, setType] = useState('');
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
@@ -62,6 +64,13 @@ export function PlaylistsScreen({ session }: PlaylistsScreenProps) {
     }
   }
 
+  async function playSelectedPlaylist() {
+    if (!selected?.songs.length) return;
+    setError(null);
+    try { playQueue(await Promise.all(selected.songs.map((song) => getSong(String(song.songId))))); }
+    catch (caught) { setError(displayError(caught)); }
+  }
+
   return <div className="screen-stack playlist-screen">
     <StatusMessage error={error} message={message} />
     <section className="panel playlist-browser">
@@ -95,7 +104,7 @@ export function PlaylistsScreen({ session }: PlaylistsScreenProps) {
 
         {selected && <div className="playlist-detail">
           <div className="playlist-detail-hero">{selected.pictureUrl ? <img src={selected.pictureUrl} alt="" /> : <span className="playlist-cover-fallback">♫</span>}<div><p className="eyebrow">{selected.type} playlist</p><h2>{selected.name}</h2><p>Created by {selected.creatorUsername} · {selected.songs.length} songs</p></div></div>
-          <div className="playlist-actions">{isCreator ? <><button type="button" onClick={() => setEditing(true)}><Pencil size={15} /> Edit</button><button className="danger-action" type="button" onClick={() => void run(() => deletePlaylist(session, String(selected.playlistId)), () => { setSelected(null); setEditing(false); }, 'Playlist deleted.')}><Trash2 size={15} /> Delete</button></> : isMember ? <button type="button" onClick={() => void run(() => leavePlaylist(session, String(selected.playlistId)), selectPlaylist, 'Left playlist.')}><UserX size={15} /> Leave</button> : <button type="button" onClick={() => void run(() => joinPlaylist(session, String(selected.playlistId)), selectPlaylist, 'Joined playlist.')}><UserPlus size={15} /> Join</button>}</div>
+          <div className="playlist-actions">{!!selected.songs.length && <button className="primary-action" type="button" onClick={() => void playSelectedPlaylist()}><Play size={15} /> Play all</button>}{isCreator ? <><button type="button" onClick={() => setEditing(true)}><Pencil size={15} /> Edit</button><button className="danger-action" type="button" onClick={() => void run(() => deletePlaylist(session, String(selected.playlistId)), () => { setSelected(null); setEditing(false); }, 'Playlist deleted.')}><Trash2 size={15} /> Delete</button></> : isMember ? <button type="button" onClick={() => void run(() => leavePlaylist(session, String(selected.playlistId)), selectPlaylist, 'Left playlist.')}><UserX size={15} /> Leave</button> : <button type="button" onClick={() => void run(() => joinPlaylist(session, String(selected.playlistId)), selectPlaylist, 'Joined playlist.')}><UserPlus size={15} /> Join</button>}</div>
           {isMember && <div className="playlist-add-song"><input value={songId} onChange={(event) => setSongId(event.target.value)} placeholder="Song ID" /><button type="button" onClick={() => void run(() => addPlaylistSong(session, String(selected.playlistId), songId), selectPlaylist, 'Song added.')}><Plus size={15} /> Add song</button></div>}
           <div className="playlist-songs-heading"><h3>Songs</h3><label className="song-search"><Search size={15} /><input value={songSearch} onChange={(event) => setSongSearch(event.target.value)} placeholder="Search within playlist" /></label></div>
           <div className="playlist-song-list">{visibleSongs.map((song, index) => <div key={song.songId}><span>{index + 1}</span><p><strong>{song.title}</strong><small>{song.mainPerformerName} · {song.voteCount} votes</small></p>{isMember && <button type="button" aria-label={`Remove ${song.title}`} onClick={() => void run(() => removePlaylistSong(session, String(selected.playlistId), String(song.songId)), selectPlaylist, 'Song removed.')}><X size={16} /></button>}</div>)}{!visibleSongs.length && <EmptyState>No songs match this search.</EmptyState>}</div>
