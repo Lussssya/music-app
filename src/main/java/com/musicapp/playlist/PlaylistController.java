@@ -61,6 +61,16 @@ public class PlaylistController {
         return playlistService.leavePlaylist(authentication.getName(), playlistId);
     }
 
+    @PutMapping("/{playlistId}/members/{memberUsername}")
+    public PlaylistResponse addPlaylistMember (Authentication authentication, @PathVariable Long playlistId, @PathVariable String memberUsername) {
+        return playlistService.addPlaylistMember(authentication.getName(), playlistId, memberUsername);
+    }
+
+    @DeleteMapping("/{playlistId}/members/{memberUsername}")
+    public PlaylistResponse removePlaylistMember (Authentication authentication, @PathVariable Long playlistId, @PathVariable String memberUsername) {
+        return playlistService.removePlaylistMember(authentication.getName(), playlistId, memberUsername);
+    }
+
     @PutMapping("/{playlistId}/songs/{songId}")
     public PlaylistResponse addSong (Authentication authentication, @PathVariable Long playlistId, @PathVariable Long songId) {
         return playlistService.addSong(authentication.getName(), playlistId, songId);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Heart, ListPlus, Play, Sparkles } from 'lucide-react';
-import { generatePlaylist, getGeneratedPlaylists } from '../api/client';
+import { Heart, ListPlus, Play, Save, Sparkles } from 'lucide-react';
+import { addPlaylistSong, createPlaylist, generatePlaylist, getGeneratedPlaylists } from '../api/client';
 import type { AuthSession, GeneratedPlaylist, GeneratedPlaylistSummary, Song } from '../types';
 import { EmptyState, StatusMessage, displayError } from './ScreenHelpers';
 import { useLibrary } from './LibraryProvider';
@@ -18,6 +18,7 @@ export function GeneratedPlaylistsScreen({ session }: GeneratedPlaylistsScreenPr
   const [playlists, setPlaylists] = useState<GeneratedPlaylistSummary[]>([]);
   const [selected, setSelected] = useState<GeneratedPlaylist | null>(null);
   const [loadingType, setLoadingType] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -68,6 +69,19 @@ export function GeneratedPlaylistsScreen({ session }: GeneratedPlaylistsScreenPr
     playNow(song, songs.slice(songs.indexOf(song) + 1));
   }
 
+  async function saveAsPlaylist() {
+    if (!selected) return;
+    setError(null); setSaving(true);
+    try {
+      const playlist = await createPlaylist(session, { name: selected.name, type: 'private', playlistUrl: null, pictureUrl: null });
+      await Promise.all(selected.songs.map((song) => addPlaylistSong(session, String(playlist.playlistId), String(song.songId))));
+    } catch (caughtError) {
+      setError(displayError(caughtError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="screen-stack generated-screen">
       <StatusMessage error={error} message={null} />
@@ -101,7 +115,7 @@ export function GeneratedPlaylistsScreen({ session }: GeneratedPlaylistsScreenPr
               <h2>{selected.name}</h2>
               <p>{selected.description} · {selected.songs.length} songs</p>
             </div>
-            {!!selected.songs.length && <button className="primary-action" type="button" onClick={() => playNow(selected.songs[0], selected.songs.slice(1))}><Play size={17} fill="currentColor" /> Play</button>}
+            {!!selected.songs.length && <div className="generated-detail-actions"><button type="button" onClick={() => void saveAsPlaylist()} disabled={saving}><Save size={17} /> {saving ? 'Saving…' : 'Save playlist'}</button><button className="primary-action" type="button" onClick={() => playNow(selected.songs[0], selected.songs.slice(1))}><Play size={17} fill="currentColor" /> Play</button></div>}
           </div>
           {selected.songs.length ? (
             <ol className="generated-song-list">

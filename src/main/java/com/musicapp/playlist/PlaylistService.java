@@ -159,6 +159,40 @@ public class PlaylistService {
     }
 
     @Transactional
+    public PlaylistResponse addPlaylistMember (String username, Long playlistId, String memberUsername) {
+        final Long creatorId = requireListenerIdForExistingPlaylist(username, playlistId);
+        requirePlaylistCreator(creatorId, playlistId);
+        final Long memberId = requireListenerId(memberUsername);
+
+        jdbcTemplate.update("""
+                INSERT INTO playlist_member (listener_id, playlist_id)
+                VALUES (?, ?)
+                ON CONFLICT (listener_id, playlist_id) DO NOTHING
+                """, memberId, playlistId);
+
+        return findPlaylist(playlistId);
+    }
+
+    @Transactional
+    public PlaylistResponse removePlaylistMember (String username, Long playlistId, String memberUsername) {
+        final Long creatorId = requireListenerIdForExistingPlaylist(username, playlistId);
+        requirePlaylistCreator(creatorId, playlistId);
+        final Long memberId = requireListenerId(memberUsername);
+
+        if (creatorId.equals(memberId)) {
+            throw new BadRequestException("Playlist creator cannot be removed.");
+        }
+
+        jdbcTemplate.update("""
+                DELETE FROM playlist_member
+                WHERE listener_id = ?
+                  AND playlist_id = ?
+                """, memberId, playlistId);
+
+        return findPlaylist(playlistId);
+    }
+
+    @Transactional
     public PlaylistResponse addSong (String username, Long playlistId, Long songId) {
         final Long listenerId = requireListenerIdForExistingPlaylist(username, playlistId);
         requireSongExists(songId);

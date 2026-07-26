@@ -220,6 +220,14 @@ export function createPlaylist(session: AuthSession, request: PlaylistRequest): 
   });
 }
 
+export function updatePlaylist(session: AuthSession, playlistId: string, request: PlaylistRequest): Promise<Playlist> {
+  return apiRequest<Playlist>(`/playlists/${playlistId}`, { method: 'PUT', body: request, session });
+}
+
+export function deletePlaylist(session: AuthSession, playlistId: string): Promise<void> {
+  return apiRequest<void>(`/playlists/${playlistId}`, { method: 'DELETE', session });
+}
+
 export function joinPlaylist(session: AuthSession, playlistId: string): Promise<Playlist> {
   return apiRequest<Playlist>(`/playlists/${playlistId}/members/me`, {
     method: 'PUT',
@@ -232,6 +240,14 @@ export function leavePlaylist(session: AuthSession, playlistId: string): Promise
     method: 'DELETE',
     session
   });
+}
+
+export function addPlaylistMember(session: AuthSession, playlistId: string, username: string): Promise<Playlist> {
+  return apiRequest<Playlist>(`/playlists/${playlistId}/members/${encodeURIComponent(username)}`, { method: 'PUT', session });
+}
+
+export function removePlaylistMember(session: AuthSession, playlistId: string, username: string): Promise<Playlist> {
+  return apiRequest<Playlist>(`/playlists/${playlistId}/members/${encodeURIComponent(username)}`, { method: 'DELETE', session });
 }
 
 export function addPlaylistSong(session: AuthSession, playlistId: string, songId: string): Promise<Playlist> {
