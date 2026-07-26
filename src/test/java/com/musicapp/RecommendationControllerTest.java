@@ -27,6 +27,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -162,6 +165,11 @@ class RecommendationControllerTest {
         }
 
         @Override
+        public Page<RecommendationResponse> getRecommendations (String username, int page, int size) {
+            return new PageImpl<>(getRecommendations(username, size), PageRequest.of(page, size), response.size());
+        }
+
+        @Override
         public List<RecommendationResponse> rebuildRecommendations (String username, int limit) {
             this.rebuildUsername = username;
             this.rebuildLimit = limit;
@@ -169,6 +177,11 @@ class RecommendationControllerTest {
                 throw exception;
             }
             return rebuildResponse;
+        }
+
+        @Override
+        public Page<RecommendationResponse> rebuildRecommendations (String username, int page, int size) {
+            return new PageImpl<>(rebuildRecommendations(username, size), PageRequest.of(page, size), rebuildResponse.size());
         }
     }
 

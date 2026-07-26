@@ -1,61 +1,17 @@
-import { useState } from 'react';
-import { Heart, ListPlus, Play, RefreshCw, Sparkles } from 'lucide-react';
-import { getRecommendations, rebuildRecommendations } from '../api/client';
-import type { AuthSession, Recommendation } from '../types';
+import { useEffect, useState } from 'react';
+import { Ban, Heart, ListPlus, Play, RefreshCw, Sparkles } from 'lucide-react';
+import { getRecommendations, rebuildRecommendations, setSongAttitude } from '../api/client';
+import type { AuthSession, PageResponse, Recommendation } from '../types';
 import { EmptyState, StatusMessage, displayError } from './ScreenHelpers';
 import { usePlayer } from './PlayerProvider';
 import { useLibrary } from './LibraryProvider';
 
-type RecommendationsScreenProps = {
-  session: AuthSession;
-};
-
-export function RecommendationsScreen({ session }: RecommendationsScreenProps) {
-  const { playNow, addToQueue } = usePlayer();
-  const { isFavorite, toggleFavorite } = useLibrary();
-  const [limit, setLimit] = useState('10');
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-
-  async function run(action: () => Promise<Recommendation[]>, successMessage: string) {
-    setError(null);
-    setMessage(null);
-    try {
-      setRecommendations(await action());
-      setMessage(successMessage);
-    } catch (caughtError) {
-      setError(displayError(caughtError));
-    }
-  }
-
-  return (
-    <div className="screen-stack">
-      <div className="panel">
-        <h2>Recommendations</h2>
-        <div className="toolbar-form">
-          <input value={limit} onChange={(event) => setLimit(event.target.value)} placeholder="Limit" />
-          <button type="button" onClick={() => run(() => getRecommendations(session, limit), 'Recommendations loaded.')}><RefreshCw size={16} /> Load</button>
-          <button className="primary-action compact" type="button" onClick={() => run(() => rebuildRecommendations(session, limit), 'Recommendations rebuilt.')}><Sparkles size={16} /> Rebuild</button>
-        </div>
-        <StatusMessage error={error} message={message} />
-      </div>
-
-      <div className="result-grid">
-        {recommendations.map((recommendation) => (
-          <article className="result-card" key={recommendation.song.songId}>
-            <h3>{recommendation.song.title}</h3>
-            <p>{recommendation.song.mainPerformer.nickname} · {recommendation.song.genres.join(', ')}</p>
-            <span>Score {Number(recommendation.score).toFixed(4)}</span>
-            <div className="card-actions">
-              <button type="button" onClick={() => playNow(recommendation.song, recommendations.slice(recommendations.indexOf(recommendation) + 1).map((item) => item.song))}><Play size={15} /> Play</button>
-              <button type="button" onClick={() => addToQueue(recommendation.song)}><ListPlus size={15} /> Queue</button>
-              <button className={isFavorite(recommendation.song.songId) ? 'favorite active' : 'favorite'} type="button" aria-label={isFavorite(recommendation.song.songId) ? `Remove ${recommendation.song.title} from favorites` : `Add ${recommendation.song.title} to favorites`} onClick={() => void toggleFavorite(recommendation.song)}><Heart size={15} fill={isFavorite(recommendation.song.songId) ? 'currentColor' : 'none'} /></button>
-            </div>
-          </article>
-        ))}
-        {!recommendations.length && <EmptyState>No recommendations loaded yet.</EmptyState>}
-      </div>
-    </div>
-  );
+export function RecommendationsScreen({ session }: { session: AuthSession }) {
+  const { playNow, addToQueue } = usePlayer(); const { isFavorite, toggleFavorite } = useLibrary();
+  const [page, setPage] = useState<PageResponse<Recommendation> | null>(null); const [error, setError] = useState<string | null>(null); const [message, setMessage] = useState<string | null>(null);
+  async function load(pageNumber = 0, rebuild = false) { setError(null); try { const result = rebuild ? await rebuildRecommendations(session, pageNumber) : await getRecommendations(session, pageNumber); setPage(result); setMessage(rebuild ? '100 recommendations rebuilt.' : null); } catch (caught) { setError(displayError(caught)); } }
+  useEffect(() => { void load(); }, [session]);
+  async function notForMe(recommendation: Recommendation) { setError(null); try { await setSongAttitude(session, String(recommendation.song.songId), 'not_interested'); setPage((current) => current && { ...current, content: current.content.filter((item) => item.song.songId !== recommendation.song.songId) }); setMessage('Removed from recommendations.'); } catch (caught) { setError(displayError(caught)); } }
+  const recommendations = page?.content ?? [];
+  return <div className="screen-stack"><div className="panel"><h2>Recommendations</h2><p>Generated from your listening and preference signals.</p><div className="toolbar-form"><button type="button" onClick={() => void load(page?.number ?? 0)}><RefreshCw size={16} /> Refresh</button><button className="primary-action compact" type="button" onClick={() => void load(0, true)}><Sparkles size={16} /> Rebuild 100</button></div><StatusMessage error={error} message={message} /></div><div className="result-grid">{recommendations.map((recommendation, index) => <article className="result-card" key={recommendation.song.songId}><h3>{recommendation.song.title}</h3><p>{recommendation.song.mainPerformer.nickname} · {recommendation.song.genres.join(', ')}</p><span>Score {Number(recommendation.score).toFixed(4)}</span><div className="card-actions"><button type="button" onClick={() => playNow(recommendation.song, recommendations.slice(index + 1).map((item) => item.song))}><Play size={15} /> Play</button><button type="button" onClick={() => addToQueue(recommendation.song)}><ListPlus size={15} /> Queue</button><button type="button" onClick={() => void notForMe(recommendation)}><Ban size={15} /> Not for me</button><button className={isFavorite(recommendation.song.songId) ? 'favorite active' : 'favorite'} type="button" onClick={() => void toggleFavorite(recommendation.song)}><Heart size={15} fill={isFavorite(recommendation.song.songId) ? 'currentColor' : 'none'} /></button></div></article>)}{!recommendations.length && <EmptyState>No recommendations yet.</EmptyState>}</div>{page && <div className="history-pagination"><button type="button" disabled={page.first} onClick={() => void load(page.number - 1)}>Previous</button><span>Page {page.number + 1} of {Math.max(page.totalPages, 1)} · {page.totalElements} recommendations</span><button type="button" disabled={page.last} onClick={() => void load(page.number + 1)}>Next</button></div>}</div>;
 }

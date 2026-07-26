@@ -10,6 +10,9 @@ import com.musicapp.listener.ListenerRepository;
 import com.musicapp.recommendation.dto.RecommendationResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcOperations;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,23 +28,38 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class RecommendationService {
-    private static final int MAX_LIMIT = 100;
+    private static final int REBUILD_LIMIT = 100;
+    private static final int MAX_PAGE_SIZE = 25;
 
     private final ListenerRepository listenerRepository;
     private final JdbcOperations jdbcTemplate;
 
-    @Transactional(readOnly = true)
-    public List<RecommendationResponse> getRecommendations (String username, int limit) {
+    @Transactional
+    public Page<RecommendationResponse> getRecommendations (String username, int page, int size) {
         final Long listenerId = requireListenerId(username);
-        final int normalizedLimit = normalizeLimit(limit);
-        return findRecommendations(listenerId, normalizedLimit);
+        validatePage(page, size);
+        if (recommendationsNeedRebuild(listenerId)) rebuild(listenerId);
+        return findRecommendations(listenerId, page, size);
     }
 
     @Transactional
-    public List<RecommendationResponse> rebuildRecommendations (String username, int limit) {
-        final Long listenerId = requireListenerId(username);
-        final int normalizedLimit = normalizeLimit(limit);
+    public List<RecommendationResponse> getRecommendations (String username, int limit) {
+        return getRecommendations(username, 0, limit).getContent();
+    }
 
+    @Transactional
+    public Page<RecommendationResponse> rebuildRecommendations (String username, int page, int size) {
+        final Long listenerId = requireListenerId(username);
+        validatePage(page, size);
+        rebuild(listenerId);
+        return findRecommendations(listenerId, page, size);
+    }
+
+    public List<RecommendationResponse> rebuildRecommendations (String username, int limit) {
+        return rebuildRecommendations(username, 0, limit).getContent();
+    }
+
+    private void rebuild (Long listenerId) {
         jdbcTemplate.update("""
                 DELETE FROM listener_recommendation
                 WHERE listener_id = ?
@@ -138,16 +156,27 @@ public class RecommendationService {
                         ON psig.performer_id = ps.performer_id
                     GROUP BY ps.song_id
                 ),
+                blocked_artist_penalty AS (
+                    SELECT candidate_song.song_id,
+                           COUNT(DISTINCT blocked_song.song_id) * 20.0 AS penalty
+                    FROM selected_listener selected
+                    JOIN blocked_song blocked_song ON blocked_song.listener_id = selected.listener_id
+                    JOIN performer_song blocked_song_performer ON blocked_song_performer.song_id = blocked_song.song_id
+                    JOIN performer_song candidate_song ON candidate_song.performer_id = blocked_song_performer.performer_id
+                    GROUP BY candidate_song.song_id
+                ),
                 candidate_score AS (
                     SELECT
                         s.song_id,
-                        COALESCE(sgs.score, 0) + COALESCE(sps.score, 0) AS score
+                        COALESCE(sgs.score, 0) + COALESCE(sps.score, 0) - COALESCE(bap.penalty, 0) AS score
                     FROM selected_listener selected
                     CROSS JOIN song s
                     LEFT JOIN song_genre_score sgs
                         ON sgs.song_id = s.song_id
                     LEFT JOIN song_performer_score sps
                         ON sps.song_id = s.song_id
+                    LEFT JOIN blocked_artist_penalty bap
+                        ON bap.song_id = s.song_id
                     WHERE NOT EXISTS (
                             SELECT 1
                             FROM listener_song_activity lsa
@@ -178,23 +207,20 @@ public class RecommendationService {
                 FROM selected_listener selected
                 JOIN candidate_score candidate
                     ON candidate.score > 0
+                ORDER BY candidate.score DESC, candidate.song_id
+                LIMIT ?
                 ON CONFLICT (listener_id, song_id) DO UPDATE SET
                     recommendation_score = EXCLUDED.recommendation_score,
                     generated_at = EXCLUDED.generated_at
-                """, listenerId);
-
-        return findRecommendations(listenerId, normalizedLimit);
+                """, listenerId, REBUILD_LIMIT);
     }
 
-    private int normalizeLimit (int limit) {
-        if (limit < 1) {
-            throw new BadRequestException("Recommendation limit must be at least 1.");
-        }
-        return Math.min(limit, MAX_LIMIT);
+    private void validatePage (int page, int size) {
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) throw new BadRequestException("Illegal recommendation page or size.");
     }
 
-    private List<RecommendationResponse> findRecommendations (Long listenerId, int limit) {
-        return jdbcTemplate.query("""
+    private Page<RecommendationResponse> findRecommendations (Long listenerId, int page, int size) {
+        final List<RecommendationResponse> content = jdbcTemplate.query("""
                 SELECT
                     lr.recommendation_score,
                     lr.generated_at,
@@ -219,8 +245,26 @@ public class RecommendationService {
                 GROUP BY lr.listener_id, lr.song_id, lr.recommendation_score, lr.generated_at,
                          s.song_id, p.performer_id, a.album_id
                 ORDER BY lr.recommendation_score DESC, lr.generated_at DESC, s.title
-                LIMIT ?
-                """, this::mapRecommendation, listenerId, limit);
+                LIMIT ? OFFSET ?
+                """, this::mapRecommendation, listenerId, size, page * size);
+        return new PageImpl<>(content, PageRequest.of(page, size), recommendationCount(listenerId));
+    }
+
+    private long recommendationCount (Long listenerId) { return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM listener_recommendation WHERE listener_id = ?", Long.class, listenerId); }
+
+    private boolean recommendationsNeedRebuild (Long listenerId) {
+        if (recommendationCount(listenerId) == 0) return true;
+        final Long streamsSinceLastRebuild = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM song_stream
+                WHERE listener_id = ?
+                  AND streamed_at > (
+                      SELECT MAX(generated_at)
+                      FROM listener_recommendation
+                      WHERE listener_id = ?
+                  )
+                """, Long.class, listenerId, listenerId);
+        return streamsSinceLastRebuild != null && streamsSinceLastRebuild >= REBUILD_LIMIT;
     }
 
     private Long requireListenerId (String username) {

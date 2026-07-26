@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
+import org.springframework.data.domain.Page;
 
 @RestController
 @RequestMapping("/api/recommendations")
@@ -18,12 +18,12 @@ public class RecommendationController {
     private final RecommendationService recommendationService;
 
     @GetMapping
-    public List<RecommendationResponse> getRecommendations (Authentication authentication, @RequestParam(defaultValue = "20") int limit) {
-        return recommendationService.getRecommendations(authentication.getName(), limit);
+    public Page<RecommendationResponse> getRecommendations (Authentication authentication, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return recommendationService.getRecommendations(authentication.getName(), page, size);
     }
 
     @PostMapping("/rebuild")
-    public List<RecommendationResponse> rebuildRecommendations (Authentication authentication, @RequestParam(defaultValue = "20") int limit) {
-        return recommendationService.rebuildRecommendations(authentication.getName(), limit);
+    public Page<RecommendationResponse> rebuildRecommendations (Authentication authentication, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        return recommendationService.rebuildRecommendations(authentication.getName(), page, size);
     }
 }

@@ -275,14 +275,14 @@ export function setPlaylistSongVote(session: AuthSession, playlistId: string, so
   });
 }
 
-export function getRecommendations(session: AuthSession, limit: string): Promise<Recommendation[]> {
-  const params = new URLSearchParams({ limit });
-  return apiRequest<Recommendation[]>(`/recommendations?${params.toString()}`, { session });
+export function getRecommendations(session: AuthSession, page: number, size = 20): Promise<PageResponse<Recommendation>> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
+  return apiRequest<PageResponse<Recommendation>>(`/recommendations?${params.toString()}`, { session });
 }
 
-export function rebuildRecommendations(session: AuthSession, limit: string): Promise<Recommendation[]> {
-  const params = new URLSearchParams({ limit });
-  return apiRequest<Recommendation[]>(`/recommendations/rebuild?${params.toString()}`, {
+export function rebuildRecommendations(session: AuthSession, page: number, size = 20): Promise<PageResponse<Recommendation>> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
+  return apiRequest<PageResponse<Recommendation>>(`/recommendations/rebuild?${params.toString()}`, {
     method: 'POST',
     session
   });

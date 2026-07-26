@@ -89,6 +89,7 @@ public class ListenerActionService {
                     attitude = EXCLUDED.attitude,
                     updated_at = CURRENT_TIMESTAMP
                 """, listenerId, songId, attitude.name());
+        markRecommendationsStale(listenerId);
 
         return findSongState(listenerId, songId);
     }
@@ -104,6 +105,7 @@ public class ListenerActionService {
                 WHERE listener_id = ?
                   AND song_id = ?
                 """, listenerId, songId);
+        markRecommendationsStale(listenerId);
 
         return findSongState(listenerId, songId);
     }
@@ -118,6 +120,8 @@ public class ListenerActionService {
                 ON CONFLICT (listener_id, song_id) DO NOTHING
                 """, listenerId, songId);
 
+        markRecommendationsStale(listenerId);
+
         return findSongState(listenerId, songId);
     }
 
@@ -131,7 +135,13 @@ public class ListenerActionService {
                   AND song_id = ?
                 """, listenerId, songId);
 
+        markRecommendationsStale(listenerId);
+
         return findSongState(listenerId, songId);
+    }
+
+    private void markRecommendationsStale (Long listenerId) {
+        jdbcTemplate.update("DELETE FROM listener_recommendation WHERE listener_id = ?", listenerId);
     }
 
     private Long requireListenerIdForExistingSong (String username, Long songId) {
