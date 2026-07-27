@@ -1,5 +1,8 @@
 package com.musicapp;
 
+import com.musicapp.catalog.CatalogService;
+import com.musicapp.catalog.DiscoveryService;
+import com.musicapp.catalog.dto.SearchSuggestionResponse;
 import com.musicapp.listener.Listener;
 import com.musicapp.listener.ListenerRepository;
 import com.musicapp.recommendation.RecommendationService;
@@ -63,7 +66,7 @@ class PostgresMigrationIntegrationTest {
                 Integer.class
         );
 
-        assertThat(migrationCount).isEqualTo(2);
+        assertThat(migrationCount).isEqualTo(6);
         assertThat(listenerCount).isEqualTo(15);
         assertThat(songCount).isEqualTo(32);
         assertThat(playlistCount).isEqualTo(8);
@@ -97,6 +100,24 @@ class PostgresMigrationIntegrationTest {
 
         assertThat(attitude).isEqualTo("not_interested");
         assertThat(playlistType).isEqualTo("shared");
+    }
+
+    @Test
+    void discoverySuggestionsRunAgainstTheMigratedPostgresSchema () {
+        final DiscoveryService discoveryService = new DiscoveryService(
+                listenerRepository(1L),
+                new EmptyCatalogService(),
+                jdbcTemplate
+        );
+
+        final List<SearchSuggestionResponse> suggestions = discoveryService.getSearchSuggestions("aurora", 8);
+
+        assertThat(suggestions).isNotEmpty();
+        assertThat(suggestions.getFirst().type()).isEqualTo("performer");
+        assertThat(suggestions.getFirst().title()).isEqualTo("Aurora Sky");
+        assertThat(suggestions)
+                .extracting(SearchSuggestionResponse::type)
+                .contains("album", "song");
     }
 
     @Test
@@ -364,5 +385,11 @@ class PostgresMigrationIntegrationTest {
             String title,
             BigDecimal score
     ) {
+    }
+
+    private static class EmptyCatalogService extends CatalogService {
+        EmptyCatalogService () {
+            super(null, null, null, null, null);
+        }
     }
 }

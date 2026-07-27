@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AUTH_SESSION_INVALID_EVENT, ApiError, apiRequest, clearCsrfToken, login } from './client';
+import {
+  AUTH_SESSION_INVALID_EVENT,
+  ApiError,
+  apiRequest,
+  clearCsrfToken,
+  getSearchSuggestions,
+  getSongs,
+  login
+} from './client';
 import type { AuthSession } from '../types';
 
 const session: AuthSession = {
@@ -92,6 +100,58 @@ describe('apiRequest error states', () => {
 
     await expect(login({ username: 'listener', password: 'password123' })).rejects.toEqual(
       new ApiError('Sign-in could not be saved. Allow first-party cookies for this site and try again.', 401)
+    );
+  });
+});
+
+describe('catalog discovery requests', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps catalog results paginated and preserves filters', async () => {
+    const page = {
+      content: [],
+      number: 2,
+      size: 20,
+      totalElements: 45,
+      totalPages: 3,
+      first: false,
+      last: true
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(page), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getSongs(new URLSearchParams({ search: 'aurora', genreName: 'Pop' }), 2, 20))
+      .resolves.toEqual(page);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/songs?search=aurora&genreName=Pop&page=2&size=20',
+      expect.objectContaining({ credentials: 'include' })
+    );
+  });
+
+  it('normalizes the search suggestion request', async () => {
+    const suggestions = [{
+      type: 'performer',
+      entityId: 1,
+      title: 'Aurora Sky',
+      subtitle: 'Solo artist'
+    }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(suggestions), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getSearchSuggestions('  aurora  ', 8)).resolves.toEqual(suggestions);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/discovery/suggestions?query=aurora&limit=8',
+      expect.objectContaining({ credentials: 'include' })
     );
   });
 });

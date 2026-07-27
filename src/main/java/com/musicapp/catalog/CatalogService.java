@@ -20,6 +20,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class CatalogService {
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final PerformerRepository performerRepository;
     private final AlbumRepository albumRepository;
     private final SongRepository songRepository;
@@ -80,6 +82,16 @@ public class CatalogService {
         return songRepository.findByMainPerformerIdOrderByReleaseDateDescTitle(pageable, performerId).map(catalogMapper::toSongResponse);
     }
 
+    @Transactional(readOnly = true)
+    public Page<SongResponse> searchSongsByAlbum (Long albumId, int page, int size) {
+        final Pageable pageable = createPageable(page, size);
+
+        if (!albumRepository.existsById(albumId)) {
+            throw new NotFoundException("Album not found: " + albumId);
+        }
+        return songRepository.findByAlbumIdOrderByReleaseDateDescTitle(pageable, albumId).map(catalogMapper::toSongResponse);
+    }
+
     private void ensurePerformerExists (Long performerId) {
         if (!performerRepository.existsById(performerId)) {
             throw new NotFoundException("Performer not found: " + performerId);
@@ -103,7 +115,7 @@ public class CatalogService {
     }
 
     private void ensurePaginationParameters (int page, int size) {
-        if (page < 0 || size < 1 || size > 100) {
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new BadRequestException("Illegal page or size request. page: " + page + ", size: " + size);
         }
     }

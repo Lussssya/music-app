@@ -64,11 +64,23 @@ export type Performer = PerformerSummary & {
 export type Album = AlbumSummary & {
   albumUrl: string | null;
   performer: PerformerSummary;
-  songs: Song[];
 };
 
 export type Genre = {
   genreName: string;
+};
+
+export type SearchSuggestion = {
+  type: 'song' | 'performer' | 'album';
+  entityId: number;
+  title: string;
+  subtitle: string;
+};
+
+export type TrendingSong = {
+  song: Song;
+  streamCount: number;
+  listenerCount: number;
 };
 
 export type SongActionState = {

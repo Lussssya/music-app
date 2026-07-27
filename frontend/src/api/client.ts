@@ -16,8 +16,10 @@ import type {
   PlaylistSummary,
   Recommendation,
   RegisterRequest,
+  SearchSuggestion,
   Song,
-  SongActionState
+  SongActionState,
+  TrendingSong
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
@@ -135,31 +137,71 @@ export function deleteListeningHistory(session: AuthSession): Promise<void> {
   return apiRequest<void>('/listener/me/history', { method: 'DELETE', session });
 }
 
-export function getSongs(params: URLSearchParams): Promise<Song[]> {
-  return apiRequest<Song[]>(`/songs?${params.toString()}`);
+export function getSongs(params: URLSearchParams, page = 0, size = 20): Promise<PageResponse<Song>> {
+  const pagedParams = new URLSearchParams(params);
+  pagedParams.set('page', String(page));
+  pagedParams.set('size', String(size));
+  return apiRequest<PageResponse<Song>>(`/songs?${pagedParams.toString()}`);
 }
 
 export function getSong(songId: string): Promise<Song> {
   return apiRequest<Song>(`/songs/${songId}`);
 }
 
-export function getPerformers(search: string): Promise<Performer[]> {
-  const params = new URLSearchParams();
+export function getPerformer(performerId: string): Promise<Performer> {
+  return apiRequest<Performer>(`/performers/${performerId}`);
+}
+
+export function getPerformers(search: string, page = 0, size = 20): Promise<PageResponse<Performer>> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
   if (search.trim()) {
     params.set('search', search.trim());
   }
-  return apiRequest<Performer[]>(`/performers?${params.toString()}`);
+  return apiRequest<PageResponse<Performer>>(`/performers?${params.toString()}`);
 }
 
-export function getAlbums(search: string, performerId: string): Promise<Album[]> {
-  const params = new URLSearchParams();
+export function getPerformerAlbums(performerId: string, page = 0, size = 20): Promise<PageResponse<Album>> {
+  return apiRequest<PageResponse<Album>>(`/performers/${performerId}/albums?page=${page}&size=${size}`);
+}
+
+export function getPerformerSongs(performerId: string, page = 0, size = 20): Promise<PageResponse<Song>> {
+  return apiRequest<PageResponse<Song>>(`/performers/${performerId}/songs?page=${page}&size=${size}`);
+}
+
+export function getAlbum(albumId: string): Promise<Album> {
+  return apiRequest<Album>(`/albums/${albumId}`);
+}
+
+export function getAlbumSongs(albumId: string, page = 0, size = 50): Promise<PageResponse<Song>> {
+  return apiRequest<PageResponse<Song>>(`/albums/${albumId}/songs?page=${page}&size=${size}`);
+}
+
+export function getAlbums(search: string, performerId = '', page = 0, size = 20): Promise<PageResponse<Album>> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
   if (search.trim()) {
     params.set('search', search.trim());
   }
   if (performerId.trim()) {
     params.set('performerId', performerId.trim());
   }
-  return apiRequest<Album[]>(`/albums?${params.toString()}`);
+  return apiRequest<PageResponse<Album>>(`/albums?${params.toString()}`);
+}
+
+export function getNewReleases(page = 0, size = 20): Promise<PageResponse<Song>> {
+  return apiRequest<PageResponse<Song>>(`/songs/recent?page=${page}&size=${size}`);
+}
+
+export function getTrendingSongs(page = 0, size = 20, days = 30): Promise<PageResponse<TrendingSong>> {
+  return apiRequest<PageResponse<TrendingSong>>(`/discovery/trending?page=${page}&size=${size}&days=${days}`);
+}
+
+export function getSearchSuggestions(query: string, limit = 8): Promise<SearchSuggestion[]> {
+  const params = new URLSearchParams({ query: query.trim(), limit: String(limit) });
+  return apiRequest<SearchSuggestion[]>(`/discovery/suggestions?${params.toString()}`);
+}
+
+export function getFollowedPerformerReleases(session: AuthSession, page = 0, size = 20): Promise<PageResponse<Song>> {
+  return apiRequest<PageResponse<Song>>(`/discovery/following/releases?page=${page}&size=${size}`, { session });
 }
 
 export function getSongState(session: AuthSession, songId: string): Promise<SongActionState> {

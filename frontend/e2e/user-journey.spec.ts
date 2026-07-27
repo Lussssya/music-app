@@ -51,7 +51,27 @@ test.beforeEach(async ({ page }) => {
       return;
     }
     if (path === '/api/songs') {
-      await route.fulfill({ json: [song] });
+      await route.fulfill({ json: pageResponse([song]) });
+      return;
+    }
+    if (path === '/api/genres') {
+      await route.fulfill({ json: [{ genreName: 'Pop' }] });
+      return;
+    }
+    if (path === '/api/songs/recent') {
+      await route.fulfill({ json: pageResponse([song]) });
+      return;
+    }
+    if (path === '/api/discovery/trending') {
+      await route.fulfill({ json: pageResponse([{ song, streamCount: 14, listenerCount: 6 }]) });
+      return;
+    }
+    if (path === '/api/discovery/following/releases') {
+      await route.fulfill({ json: pageResponse([song]) });
+      return;
+    }
+    if (path === '/api/discovery/suggestions') {
+      await route.fulfill({ json: [] });
       return;
     }
     if (path === '/api/listener/me/songs/1/stream') {
@@ -100,7 +120,7 @@ test('registration to recommendations journey works in a browser', async ({ page
   await page.getByRole('button', { name: 'Create account' }).click();
 
   await expect(page.getByRole('heading', { name: user.username })).toBeVisible();
-  await expect(page.getByRole('heading', { name: song.title })).toBeVisible();
+  await expect(page.getByText(song.title).first()).toBeVisible();
 
   await page.getByRole('button', { name: 'Actions' }).click();
   await page.getByRole('button', { name: 'Stream' }).click();

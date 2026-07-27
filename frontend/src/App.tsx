@@ -86,7 +86,7 @@ export function App() {
         </header>
 
         <section className="workspace">
-          {activeTab === 'catalog' && <CatalogScreen />}
+          {activeTab === 'catalog' && <CatalogScreen session={session} />}
           {activeTab === 'library' && <LibraryScreen />}
           {activeTab === 'history' && <HistoryScreen session={session} />}
           {activeTab === 'generated' && <GeneratedPlaylistsScreen session={session} />}

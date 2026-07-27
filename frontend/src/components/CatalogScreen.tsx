@@ -1,215 +1,396 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Heart, ListPlus, Play, RotateCcw, Search } from 'lucide-react';
-import { getAlbums, getGenres, getPerformers, getSongs } from '../api/client';
-import type { Album, Genre, Performer, Song } from '../types';
-import { EmptyState, StatusMessage, displayError } from './ScreenHelpers';
-import { usePlayer } from './PlayerProvider';
+import { ArrowRight, Disc3, Heart, ListPlus, Play, Search, Sparkles, TrendingUp, UserRound } from 'lucide-react';
+import {
+  getAlbums,
+  getFollowedPerformerReleases,
+  getGenres,
+  getNewReleases,
+  getPerformers,
+  getSearchSuggestions,
+  getSongs,
+  getTrendingSongs
+} from '../api/client';
+import type {
+  Album,
+  AuthSession,
+  Genre,
+  PageResponse,
+  Performer,
+  SearchSuggestion,
+  Song,
+  TrendingSong
+} from '../types';
+import {
+  AlbumDetailPage,
+  DiscoveryCollectionPage,
+  type DiscoveryCollection,
+  PerformerDetailPage
+} from './CatalogDetailPages';
+import { CatalogPagination, CatalogSongList } from './CatalogUi';
 import { useLibrary } from './LibraryProvider';
+import { usePlayer } from './PlayerProvider';
+import { StatusMessage, displayError } from './ScreenHelpers';
 
-type CatalogView = 'songs' | 'performers' | 'albums' | 'genres';
+type BrowseView = 'songs' | 'performers' | 'albums' | 'genres';
+type CatalogTarget =
+  | { kind: 'home' }
+  | { kind: 'performer'; performerId: number }
+  | { kind: 'album'; albumId: number }
+  | { kind: 'collection'; collection: DiscoveryCollection };
 
-export function CatalogScreen() {
+export function CatalogScreen({ session }: { session: AuthSession }) {
   const { playNow, addToQueue } = usePlayer();
   const { isFavorite, toggleFavorite } = useLibrary();
-  const [view, setView] = useState<CatalogView>('songs');
-  const [search, setSearch] = useState('');
+  const [target, setTarget] = useState<CatalogTarget>({ kind: 'home' });
+  const [browseView, setBrowseView] = useState<BrowseView | null>(null);
+  const [query, setQuery] = useState('');
   const [genreName, setGenreName] = useState('');
-  const [performerId, setPerformerId] = useState('');
-  const [songs, setSongs] = useState<Song[]>([]);
-  const [performers, setPerformers] = useState<Performer[]>([]);
-  const [albums, setAlbums] = useState<Album[]>([]);
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [genres, setGenres] = useState<Genre[]>([]);
-  const [filterPerformers, setFilterPerformers] = useState<Performer[]>([]);
-  const [filterGenres, setFilterGenres] = useState<Genre[]>([]);
+  const [newReleases, setNewReleases] = useState<PageResponse<Song> | null>(null);
+  const [trending, setTrending] = useState<PageResponse<TrendingSong> | null>(null);
+  const [followedReleases, setFollowedReleases] = useState<PageResponse<Song> | null>(null);
+  const [songResults, setSongResults] = useState<PageResponse<Song> | null>(null);
+  const [performerResults, setPerformerResults] = useState<PageResponse<Performer> | null>(null);
+  const [albumResults, setAlbumResults] = useState<PageResponse<Album> | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    void loadFilterOptions();
-  }, []);
+    void loadOverview();
+  }, [session]);
 
   useEffect(() => {
-    void loadCatalog();
-  }, [view]);
-
-  async function loadFilterOptions() {
-    try {
-      const [availablePerformers, availableGenres] = await Promise.all([getPerformers(''), getGenres()]);
-      setFilterPerformers(availablePerformers);
-      setFilterGenres(availableGenres);
-    } catch (caughtError) {
-      setError(displayError(caughtError));
+    const normalized = query.trim();
+    if (normalized.length < 2) {
+      setSuggestions([]);
+      setSuggestionsLoading(false);
+      return;
     }
+
+    let active = true;
+    setSuggestionsLoading(true);
+    const timer = window.setTimeout(() => {
+      void getSearchSuggestions(normalized)
+        .then((nextSuggestions) => {
+          if (active) setSuggestions(nextSuggestions);
+        })
+        .catch((caught) => {
+          if (active) setError(displayError(caught));
+        })
+        .finally(() => {
+          if (active) setSuggestionsLoading(false);
+        });
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
+
+  async function loadOverview() {
+    setLoading(true);
+    setError(null);
+    const results = await Promise.allSettled([
+      getGenres(),
+      getNewReleases(0, 6),
+      getTrendingSongs(0, 6, 30),
+      getFollowedPerformerReleases(session, 0, 6)
+    ]);
+
+    if (results[0].status === 'fulfilled') setGenres(results[0].value);
+    if (results[1].status === 'fulfilled') setNewReleases(results[1].value);
+    if (results[2].status === 'fulfilled') setTrending(results[2].value);
+    if (results[3].status === 'fulfilled') setFollowedReleases(results[3].value);
+
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure?.status === 'rejected') setError(displayError(failure.reason));
+    setLoading(false);
   }
 
-  async function loadCatalog(event?: FormEvent<HTMLFormElement>, reset = false) {
-    event?.preventDefault();
-    setError(null);
+  async function loadBrowse(view: BrowseView, page = 0, nextQuery = query.trim(), nextGenre = genreName) {
     setLoading(true);
-
-    const activeSearch = reset ? '' : search.trim();
-    const activeGenre = reset ? '' : genreName;
-    const activePerformer = reset ? '' : performerId;
-
+    setError(null);
+    setSuggestions([]);
     try {
       if (view === 'songs') {
         const params = new URLSearchParams();
-        if (activeSearch) params.set('search', activeSearch);
-        if (activeGenre) params.set('genreName', activeGenre);
-        if (activePerformer) params.set('performerId', activePerformer);
-        setSongs(await getSongs(params));
+        if (nextQuery) params.set('search', nextQuery);
+        if (nextGenre) params.set('genreName', nextGenre);
+        setSongResults(await getSongs(params, page, 20));
       } else if (view === 'performers') {
-        setPerformers(await getPerformers(activeSearch));
+        setPerformerResults(await getPerformers(nextQuery, page, 20));
       } else if (view === 'albums') {
-        setAlbums(await getAlbums(activeSearch, activePerformer));
-      } else {
-        setGenres(await getGenres());
+        setAlbumResults(await getAlbums(nextQuery, '', page, 20));
       }
-    } catch (caughtError) {
-      setError(displayError(caughtError));
+      setBrowseView(view);
+    } catch (caught) {
+      setError(displayError(caught));
     } finally {
       setLoading(false);
     }
   }
 
-  function clearFilters() {
-    setSearch('');
-    setGenreName('');
-    setPerformerId('');
-    void loadCatalog(undefined, true);
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void loadBrowse(browseView && browseView !== 'genres' ? browseView : 'songs', 0);
   }
 
-  const visibleGenres = genres.filter((genre) =>
-    genre.genreName.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
-  );
-  const resultCount = view === 'songs'
-    ? songs.length
-    : view === 'performers'
-      ? performers.length
-      : view === 'albums'
-        ? albums.length
-        : visibleGenres.length;
-  const hasFilters = Boolean(search.trim() || genreName || performerId);
+  function openTarget(nextTarget: CatalogTarget) {
+    setTarget(nextTarget);
+    setSuggestions([]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function openGenre(nextGenre: string) {
+    setGenreName(nextGenre);
+    setQuery('');
+    void loadBrowse('songs', 0, '', nextGenre);
+  }
+
+  function chooseSuggestion(suggestion: SearchSuggestion) {
+    setSuggestions([]);
+    if (suggestion.type === 'performer') {
+      openTarget({ kind: 'performer', performerId: suggestion.entityId });
+    } else if (suggestion.type === 'album') {
+      openTarget({ kind: 'album', albumId: suggestion.entityId });
+    } else {
+      setQuery(suggestion.title);
+      setGenreName('');
+      void loadBrowse('songs', 0, suggestion.title, '');
+    }
+  }
+
+  const backToDiscovery = () => openTarget({ kind: 'home' });
+  const openPerformer = (performerId: number) => openTarget({ kind: 'performer', performerId });
+  const openAlbum = (albumId: number) => openTarget({ kind: 'album', albumId });
+
+  if (target.kind === 'performer') {
+    return <PerformerDetailPage performerId={target.performerId} session={session} onBack={backToDiscovery} onPerformer={openPerformer} onAlbum={openAlbum} />;
+  }
+  if (target.kind === 'album') {
+    return <AlbumDetailPage albumId={target.albumId} onBack={backToDiscovery} onPerformer={openPerformer} onAlbum={openAlbum} />;
+  }
+  if (target.kind === 'collection') {
+    return <DiscoveryCollectionPage collection={target.collection} session={session} onBack={backToDiscovery} onPerformer={openPerformer} onAlbum={openAlbum} />;
+  }
+
+  const activePage = browseView === 'songs'
+    ? songResults
+    : browseView === 'performers'
+      ? performerResults
+      : browseView === 'albums'
+        ? albumResults
+        : null;
 
   return (
-    <div className="screen-stack">
-      <div className="panel catalog-panel">
-        <div className="catalog-heading">
-          <div>
-            <h2>Search and filtering</h2>
-            <p>Find music by title, artist, album, or genre.</p>
-          </div>
-          <span className="result-count" aria-live="polite">{loading ? 'Searching…' : `${resultCount} results`}</span>
-        </div>
+    <div className="screen-stack catalog-discovery">
+      <section className="catalog-discovery-hero">
+        <p className="eyebrow">Explore</p>
+        <h2>Find your next favorite.</h2>
+        <p>Search the full catalog or explore what is new, trending, and connected to performers you follow.</p>
+        <form className="catalog-search" onSubmit={submitSearch}>
+          <Search size={19} />
+          <input
+            aria-label="Search catalog"
+            type="search"
+            placeholder="Songs, performers, or albums"
+            value={query}
+            maxLength={80}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <button type="submit">Search</button>
+          {(suggestionsLoading || suggestions.length > 0) && (
+            <div className="catalog-suggestions" role="listbox" aria-label="Search suggestions">
+              {suggestionsLoading && <span>Finding matches…</span>}
+              {!suggestionsLoading && suggestions.map((suggestion) => (
+                <button type="button" role="option" key={`${suggestion.type}-${suggestion.entityId}`} onClick={() => chooseSuggestion(suggestion)}>
+                  {suggestion.type === 'performer' ? <UserRound size={17} /> : <Disc3 size={17} />}
+                  <span><strong>{suggestion.title}</strong><small>{suggestion.subtitle}</small></span>
+                  <ArrowRight size={15} />
+                </button>
+              ))}
+            </div>
+          )}
+        </form>
+      </section>
 
-        <form className="toolbar-form catalog-filters" onSubmit={loadCatalog}>
-          <div className="segmented-control wide" aria-label="Catalog view">
-            {(['songs', 'performers', 'albums', 'genres'] as CatalogView[]).map((catalogView) => (
-              <button key={catalogView} type="button" className={view === catalogView ? 'active' : ''} onClick={() => setView(catalogView)}>
-                {catalogView}
+      <nav className="catalog-navigation" aria-label="Catalog sections">
+        <button className={browseView === null ? 'active' : ''} type="button" onClick={() => setBrowseView(null)}>Discover</button>
+        {(['songs', 'performers', 'albums', 'genres'] as BrowseView[]).map((view) => (
+          <button
+            className={browseView === view ? 'active' : ''}
+            type="button"
+            key={view}
+            onClick={() => view === 'genres' ? setBrowseView('genres') : void loadBrowse(view, 0)}
+          >
+            {view}
+          </button>
+        ))}
+      </nav>
+
+      <StatusMessage error={error} message={null} />
+
+      {browseView === null && (
+        <>
+          <DiscoveryHeading title="Browse by genre" subtitle="Start broad, then narrow down." />
+          <div className="catalog-genre-grid">
+            {genres.map((genre, index) => (
+              <button type="button" key={genre.genreName} data-tone={index % 6} onClick={() => openGenre(genre.genreName)}>
+                <span>{genre.genreName}</span><ArrowRight size={18} />
               </button>
             ))}
           </div>
 
-          <label className="search-field">
-            <span>{view === 'genres' ? 'Genre name' : 'Search'}</span>
-            <input
-              aria-label={view === 'genres' ? 'Genre name' : 'Search catalog'}
-              placeholder={view === 'genres' ? 'e.g. Pop' : `Search ${view}`}
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
+          <DiscoveryHeading title="New releases" subtitle="Newest catalog additions first." action={() => openTarget({ kind: 'collection', collection: 'new' })} />
+          <div className="catalog-card-grid">
+            {newReleases?.content.map((song, index) => (
+              <DiscoverySongCard
+                key={song.songId}
+                song={song}
+                badge={song.releaseDate}
+                onPlay={() => playNow(song, newReleases.content.slice(index + 1))}
+                onQueue={() => addToQueue(song)}
+                onFavorite={() => void toggleFavorite(song)}
+                favorite={isFavorite(song.songId)}
+                onOpen={() => song.album ? openAlbum(song.album.albumId) : openPerformer(song.mainPerformer.performerId)}
+              />
+            ))}
+          </div>
 
-          {(view === 'songs' || view === 'albums') && (
-            <label>
-              <span>Performer</span>
-              <select aria-label="Filter by performer" value={performerId} onChange={(event) => setPerformerId(event.target.value)}>
-                <option value="">All performers</option>
-                {filterPerformers.map((performer) => (
-                  <option key={performer.performerId} value={performer.performerId}>{performer.nickname}</option>
-                ))}
-              </select>
-            </label>
-          )}
+          <DiscoveryHeading title="Trending now" subtitle="Non-skipped streams from the last 30 days." icon={<TrendingUp size={18} />} action={() => openTarget({ kind: 'collection', collection: 'trending' })} />
+          <div className="catalog-card-grid">
+            {trending?.content.map((item, index) => (
+              <DiscoverySongCard
+                key={item.song.songId}
+                song={item.song}
+                badge={`${item.streamCount} streams · ${item.listenerCount} listeners`}
+                onPlay={() => playNow(item.song, trending.content.slice(index + 1).map((entry) => entry.song))}
+                onQueue={() => addToQueue(item.song)}
+                onFavorite={() => void toggleFavorite(item.song)}
+                favorite={isFavorite(item.song.songId)}
+                onOpen={() => item.song.album ? openAlbum(item.song.album.albumId) : openPerformer(item.song.mainPerformer.performerId)}
+              />
+            ))}
+            {!loading && trending && !trending.content.length && <p className="empty-state">Trending will appear after listeners record meaningful streams.</p>}
+          </div>
 
-          {view === 'songs' && (
-            <label>
-              <span>Genre</span>
-              <select aria-label="Filter by genre" value={genreName} onChange={(event) => setGenreName(event.target.value)}>
-                <option value="">All genres</option>
-                {filterGenres.map((genre) => <option key={genre.genreName} value={genre.genreName}>{genre.genreName}</option>)}
-              </select>
-            </label>
-          )}
-
-          {view !== 'genres' && (
-            <button className="primary-action compact filter-action" type="submit" disabled={loading}>
-              <Search size={18} />
-              Search
-            </button>
-          )}
-          {hasFilters && (
-            <button className="filter-action" type="button" onClick={clearFilters} disabled={loading}>
-              <RotateCcw size={17} />
-              Clear
-            </button>
-          )}
-        </form>
-        <StatusMessage error={error} message={null} />
-      </div>
-
-      {view === 'songs' && (
-        <div className="result-grid">
-          {songs.map((song) => (
-            <article className="result-card" key={song.songId}>
-              <h3>{song.title}</h3>
-              <p>{song.mainPerformer.nickname} · {song.genres.join(', ') || 'No genres'}</p>
-              <span>{song.album?.albumName ?? 'Single'} · {song.releaseDate}</span>
-              <div className="card-actions">
-                <button type="button" onClick={() => playNow(song, songs.slice(songs.indexOf(song) + 1))}><Play size={15} /> Play</button>
-                <button type="button" onClick={() => addToQueue(song)}><ListPlus size={15} /> Queue</button>
-                <button className={isFavorite(song.songId) ? 'favorite active' : 'favorite'} type="button" aria-label={isFavorite(song.songId) ? `Remove ${song.title} from favorites` : `Add ${song.title} to favorites`} onClick={() => void toggleFavorite(song)}><Heart size={15} fill={isFavorite(song.songId) ? 'currentColor' : 'none'} /></button>
-              </div>
-            </article>
-          ))}
-          {!loading && !songs.length && <EmptyState>No songs match these filters.</EmptyState>}
-        </div>
+          <DiscoveryHeading title="From performers you follow" subtitle="A recent-first feed based on your follows." icon={<Sparkles size={18} />} action={() => openTarget({ kind: 'collection', collection: 'following' })} />
+          <div className="catalog-card-grid">
+            {followedReleases?.content.map((song, index) => (
+              <DiscoverySongCard
+                key={song.songId}
+                song={song}
+                badge={song.releaseDate}
+                onPlay={() => playNow(song, followedReleases.content.slice(index + 1))}
+                onQueue={() => addToQueue(song)}
+                onFavorite={() => void toggleFavorite(song)}
+                favorite={isFavorite(song.songId)}
+                onOpen={() => song.album ? openAlbum(song.album.albumId) : openPerformer(song.mainPerformer.performerId)}
+              />
+            ))}
+            {!loading && followedReleases && !followedReleases.content.length && <p className="empty-state">Follow performers to build this feed.</p>}
+          </div>
+        </>
       )}
 
-      {view === 'performers' && (
-        <div className="result-grid">
-          {performers.map((performer) => (
-            <article className="result-card" key={performer.performerId}>
-              <h3>{performer.nickname}</h3>
-              <p>{performer.performerType}{performer.verified ? ' · verified' : ''}</p>
-              <span>ID {performer.performerId}</span>
-            </article>
-          ))}
-          {!loading && !performers.length && <EmptyState>No performers match your search.</EmptyState>}
-        </div>
-      )}
+      {browseView !== null && (
+        <section className="catalog-browse-results">
+          <div className="catalog-section-heading">
+            <div>
+              <p className="eyebrow">{genreName && browseView === 'songs' ? genreName : 'Catalog'}</p>
+              <h3>{browseView === 'genres' ? 'Browse genres' : `${browseView[0].toUpperCase()}${browseView.slice(1)}`}</h3>
+            </div>
+            {(query || genreName) && (
+              <button type="button" className="text-button" onClick={() => {
+                setQuery('');
+                setGenreName('');
+                if (browseView !== 'genres') void loadBrowse(browseView, 0, '', '');
+              }}>Clear filters</button>
+            )}
+          </div>
 
-      {view === 'albums' && (
-        <div className="result-grid">
-          {albums.map((album) => (
-            <article className="result-card" key={album.albumId}>
-              <h3>{album.albumName}</h3>
-              <p>{album.performer.nickname} · {album.releaseDate}</p>
-              <span>ID {album.albumId}</span>
-            </article>
-          ))}
-          {!loading && !albums.length && <EmptyState>No albums match these filters.</EmptyState>}
-        </div>
-      )}
-
-      {view === 'genres' && (
-        <div className="chip-grid">
-          {visibleGenres.map((genre) => <span key={genre.genreName}>{genre.genreName}</span>)}
-          {!loading && !visibleGenres.length && <EmptyState>No genres match your search.</EmptyState>}
-        </div>
+          {loading && <div className="panel" aria-busy="true">Loading catalog…</div>}
+          {!loading && browseView === 'songs' && <CatalogSongList songs={songResults?.content ?? []} emptyMessage="No songs match this search." onPerformer={openPerformer} onAlbum={openAlbum} />}
+          {!loading && browseView === 'performers' && (
+            <div className="catalog-card-grid">
+              {performerResults?.content.map((performer) => (
+                <button className="catalog-media-card" type="button" key={performer.performerId} onClick={() => openPerformer(performer.performerId)}>
+                  {performer.pictureUrl ? <img src={performer.pictureUrl} alt="" /> : <div className="catalog-cover"><UserRound size={34} /></div>}
+                  <strong>{performer.nickname}</strong>
+                  <span>{performer.performerType.replace(/_/g, ' ')}{performer.verified ? ' · verified' : ''}</span>
+                </button>
+              ))}
+              {!performerResults?.content.length && <p className="empty-state">No performers match this search.</p>}
+            </div>
+          )}
+          {!loading && browseView === 'albums' && (
+            <div className="catalog-card-grid">
+              {albumResults?.content.map((album) => (
+                <button className="catalog-media-card" type="button" key={album.albumId} onClick={() => openAlbum(album.albumId)}>
+                  <div className="catalog-cover"><Disc3 size={34} /></div>
+                  <strong>{album.albumName}</strong>
+                  <span>{album.performer.nickname} · {album.releaseDate}</span>
+                </button>
+              ))}
+              {!albumResults?.content.length && <p className="empty-state">No albums match this search.</p>}
+            </div>
+          )}
+          {!loading && browseView === 'genres' && (
+            <div className="catalog-genre-grid">
+              {genres
+                .filter((genre) => genre.genreName.toLowerCase().includes(query.trim().toLowerCase()))
+                .map((genre, index) => <button type="button" key={genre.genreName} data-tone={index % 6} onClick={() => openGenre(genre.genreName)}><span>{genre.genreName}</span><ArrowRight size={18} /></button>)}
+            </div>
+          )}
+          {activePage && <CatalogPagination page={activePage as PageResponse<unknown>} onChange={(page) => void loadBrowse(browseView, page)} />}
+        </section>
       )}
     </div>
+  );
+}
+
+function DiscoveryHeading({ title, subtitle, icon, action }: { title: string; subtitle: string; icon?: React.ReactNode; action?: () => void }) {
+  return (
+    <div className="catalog-section-heading">
+      <div><p className="eyebrow">{icon} Discovery</p><h3>{title}</h3><span>{subtitle}</span></div>
+      {action && <button className="text-button" type="button" onClick={action}>See all <ArrowRight size={16} /></button>}
+    </div>
+  );
+}
+
+function DiscoverySongCard({
+  song,
+  badge,
+  favorite,
+  onPlay,
+  onQueue,
+  onFavorite,
+  onOpen
+}: {
+  song: Song;
+  badge: string;
+  favorite: boolean;
+  onPlay: () => void;
+  onQueue: () => void;
+  onFavorite: () => void;
+  onOpen: () => void;
+}) {
+  return (
+    <article className="catalog-release-card">
+      <button className="catalog-release-main" type="button" onClick={onOpen}>
+        <div className="catalog-cover"><Disc3 size={36} /></div>
+        <strong>{song.title}</strong>
+        <span>{song.mainPerformer.nickname}</span>
+        <small>{badge}</small>
+      </button>
+      <div className="song-list-actions">
+        <button type="button" aria-label={`Play ${song.title}`} onClick={onPlay}><Play size={16} /></button>
+        <button type="button" aria-label={`Queue ${song.title}`} onClick={onQueue}><ListPlus size={16} /></button>
+        <button className={favorite ? 'favorite active' : 'favorite'} type="button" aria-label={`${favorite ? 'Remove' : 'Add'} ${song.title} ${favorite ? 'from' : 'to'} favorites`} onClick={onFavorite}><Heart size={16} fill={favorite ? 'currentColor' : 'none'} /></button>
+      </div>
+    </article>
   );
 }

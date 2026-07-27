@@ -124,6 +124,22 @@ class CatalogControllerTest {
     }
 
     @Test
+    void albumDetailSongsSupportPagination () throws Exception {
+        catalogService.songs = new PageImpl<>(List.of(song()), PageRequest.of(0, 50), 1);
+
+        mockMvc.perform(get("/api/albums/2/songs?page=0&size=50"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].songId").value(3))
+                .andExpect(jsonPath("$.number").value(0))
+                .andExpect(jsonPath("$.size").value(50));
+
+        assertThat(catalogService.operation).isEqualTo("searchSongsByAlbum");
+        assertThat(catalogService.albumId).isEqualTo(2L);
+        assertThat(catalogService.songsPage).isZero();
+        assertThat(catalogService.songsSize).isEqualTo(50);
+    }
+
+    @Test
     void genresReturnResponseShape () throws Exception {
         catalogService.genres = List.of(new GenreResponse("Electronic"), new GenreResponse("Pop"));
 
@@ -180,6 +196,7 @@ class CatalogControllerTest {
         private String operation;
         private String search;
         private Long performerId;
+        private Long albumId;
         private String genreName;
 
         FakeCatalogService () {
@@ -277,6 +294,19 @@ class CatalogControllerTest {
 
             operation = "searchSongsByPerformer";
             this.performerId = performerId;
+            songsPage = page;
+            songsSize = size;
+            return songs;
+        }
+
+        @Override
+        public Page<SongResponse> searchSongsByAlbum (Long albumId, int page, int size) {
+            if (exception != null) {
+                throw exception;
+            }
+
+            operation = "searchSongsByAlbum";
+            this.albumId = albumId;
             songsPage = page;
             songsSize = size;
             return songs;

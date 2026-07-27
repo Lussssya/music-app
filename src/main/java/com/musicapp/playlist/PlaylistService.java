@@ -17,6 +17,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -29,6 +30,20 @@ import java.util.function.Function;
 @Service
 @RequiredArgsConstructor
 public class PlaylistService {
+    private static final int GENERATED_PLAYLIST_SIZE = 20;
+    private static final long DAILY_REWIND_WINDOW_DAYS = 1;
+    private static final long WEEKLY_REWIND_WINDOW_DAYS = 7;
+    private static final long COMFORT_SONGS_WINDOW_DAYS = 365;
+    private static final int NO_SKIPS_MIN_STREAMS = 10;
+    private static final BigDecimal NO_SKIPS_MAX_SKIP_RATIO = new BigDecimal("0.05");
+    private static final int HIDDEN_FAVOURITES_MIN_STREAMS = 20;
+    private static final long FORGOTTEN_GEMS_INACTIVITY_DAYS = 30;
+    private static final int FORGOTTEN_GEMS_MIN_STREAMS = 10;
+    private static final long REDISCOVER_LOOKBACK_DAYS = 365;
+    private static final long REDISCOVER_WINDOW_END_DAYS = 180;
+    private static final long REDISCOVER_INACTIVITY_DAYS = 30;
+    private static final int REDISCOVER_MIN_STREAMS = 5;
+
     private final ListenerRepository listenerRepository;
     private final SongRepository songRepository;
     private final JdbcTemplate jdbcTemplate;
@@ -312,7 +327,7 @@ public class PlaylistService {
 
         List<Long> songIds = songSupplier.apply(listenerId).stream().distinct().toList();
 
-        return completePlaylist(listenerId, songIds, 20);
+        return completePlaylist(listenerId, songIds, GENERATED_PLAYLIST_SIZE);
     }
 
     private GeneratedPlaylist savePlaylist(
@@ -500,19 +515,19 @@ public class PlaylistService {
     private List<Long> findDailyRewindSongs (Long listenerId) {
         final Instant now = Instant.now();
 
-        return findTopSongs(listenerId, now.minus(1, ChronoUnit.DAYS), now, 20);
+        return findTopSongs(listenerId, now.minus(DAILY_REWIND_WINDOW_DAYS, ChronoUnit.DAYS), now, GENERATED_PLAYLIST_SIZE);
     }
 
     private List<Long> findWeeklyRewindSongs (Long listenerId) {
         final Instant now = Instant.now();
 
-        return findTopSongs(listenerId, now.minus(7, ChronoUnit.DAYS), now, 20);
+        return findTopSongs(listenerId, now.minus(WEEKLY_REWIND_WINDOW_DAYS, ChronoUnit.DAYS), now, GENERATED_PLAYLIST_SIZE);
     }
 
     private List<Long> findComfortSongs (Long listenerId) {
         final Instant now = Instant.now();
 
-        return findTopSongs(listenerId, now.minus(365, ChronoUnit.DAYS), now, 20);
+        return findTopSongs(listenerId, now.minus(COMFORT_SONGS_WINDOW_DAYS, ChronoUnit.DAYS), now, GENERATED_PLAYLIST_SIZE);
     }
 
     private List<Long> findNoSkipSongs (Long listenerId) {
@@ -520,13 +535,13 @@ public class PlaylistService {
                 SELECT song_id
                 FROM listener_song_activity
                 WHERE listener_id = ?
-                  AND stream_count >= 10
-                  AND skip_count::decimal / stream_count <= 0.05
+                  AND stream_count >= ?
+                  AND skip_count::decimal / stream_count <= ?
                 ORDER BY stream_count DESC
-                LIMIT 20
+                LIMIT ?
                 """;
 
-        return findListenerSongs(listenerId, sql);
+        return findListenerSongs(listenerId, sql, NO_SKIPS_MIN_STREAMS, NO_SKIPS_MAX_SKIP_RATIO, GENERATED_PLAYLIST_SIZE);
     }
 
     private List<Long> findHiddenFavouritesSongs (Long listenerId) {
@@ -534,17 +549,17 @@ public class PlaylistService {
                 SELECT song_id
                 FROM listener_song_activity
                 WHERE listener_id = ?
-                  AND stream_count >= 20
+                  AND stream_count >= ?
                   AND attitude IS DISTINCT FROM 'like'
                 ORDER BY stream_count DESC
-                LIMIT 20
+                LIMIT ?
                 """;
 
-        return findListenerSongs(listenerId, sql);
+        return findListenerSongs(listenerId, sql, HIDDEN_FAVOURITES_MIN_STREAMS, GENERATED_PLAYLIST_SIZE);
     }
 
     private List<Long> findAllTimeRewindSongs (Long listenerId) {
-        return findTopSongs(listenerId, Instant.EPOCH, Instant.now(), 20);
+        return findTopSongs(listenerId, Instant.EPOCH, Instant.now(), GENERATED_PLAYLIST_SIZE);
     }
 
     private List<Long> findGenreMixSongs (Long listenerId) {
@@ -560,14 +575,14 @@ public class PlaylistService {
                 ORDER BY MAX(lgp.priority_score) DESC,
                          COUNT(*) DESC,
                          MAX(s.song_id)
-                LIMIT 20
+                LIMIT ?
                 """;
 
-        return findListenerSongs(listenerId, sql);
+        return findListenerSongs(listenerId, sql, GENERATED_PLAYLIST_SIZE);
     }
 
     private List<Long> findForgottenGemsSongs (Long listenerId) {
-        final Instant oneMonthAgo = Instant.now().minus(30, ChronoUnit.DAYS);
+        final Instant inactivityCutoff = Instant.now().minus(FORGOTTEN_GEMS_INACTIVITY_DAYS, ChronoUnit.DAYS);
 
         final String sql = """
                 SELECT song_id
@@ -575,19 +590,26 @@ public class PlaylistService {
                 WHERE listener_id = ?
                   AND streamed_at < ?
                 GROUP BY song_id
-                HAVING COUNT(*) >= 10
+                HAVING COUNT(*) >= ?
                    AND MAX(streamed_at) < ?
                 ORDER BY COUNT(*) DESC
-                LIMIT 20
+                LIMIT ?
                 """;
 
-        return findListenerSongs(listenerId, sql, Timestamp.from(oneMonthAgo), Timestamp.from(oneMonthAgo));
+        return findListenerSongs(
+                listenerId,
+                sql,
+                Timestamp.from(inactivityCutoff),
+                FORGOTTEN_GEMS_MIN_STREAMS,
+                Timestamp.from(inactivityCutoff),
+                GENERATED_PLAYLIST_SIZE
+        );
     }
 
     private List<Long> findRediscoverSongs (Long listenerId) {
-        final Instant oneYearAgo = Instant.now().minus(365, ChronoUnit.DAYS);
-        final Instant sixMonthsAgo = Instant.now().minus(180, ChronoUnit.DAYS);
-        final Instant oneMonthAgo = Instant.now().minus(30, ChronoUnit.DAYS);
+        final Instant lookbackStart = Instant.now().minus(REDISCOVER_LOOKBACK_DAYS, ChronoUnit.DAYS);
+        final Instant windowEnd = Instant.now().minus(REDISCOVER_WINDOW_END_DAYS, ChronoUnit.DAYS);
+        final Instant inactivityCutoff = Instant.now().minus(REDISCOVER_INACTIVITY_DAYS, ChronoUnit.DAYS);
 
         final String sql = """
                 SELECT song_id
@@ -595,13 +617,21 @@ public class PlaylistService {
                 WHERE listener_id = ?
                   AND streamed_at BETWEEN ? AND ?
                 GROUP BY song_id
-                HAVING COUNT(*) >= 5
+                HAVING COUNT(*) >= ?
                    AND MAX(streamed_at) < ?
                 ORDER BY COUNT(*) DESC
-                LIMIT 20
+                LIMIT ?
                 """;
 
-        return findListenerSongs(listenerId, sql, Timestamp.from(oneYearAgo), Timestamp.from(sixMonthsAgo), Timestamp.from(oneMonthAgo));
+        return findListenerSongs(
+                listenerId,
+                sql,
+                Timestamp.from(lookbackStart),
+                Timestamp.from(windowEnd),
+                REDISCOVER_MIN_STREAMS,
+                Timestamp.from(inactivityCutoff),
+                GENERATED_PLAYLIST_SIZE
+        );
     }
 
     private List<Long> findTopSongs (Long listenerId, Instant from, Instant to, int limit) {
