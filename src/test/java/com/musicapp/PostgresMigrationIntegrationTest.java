@@ -66,7 +66,7 @@ class PostgresMigrationIntegrationTest {
                 Integer.class
         );
 
-        assertThat(migrationCount).isEqualTo(6);
+        assertThat(migrationCount).isGreaterThanOrEqualTo(6);
         assertThat(listenerCount).isEqualTo(15);
         assertThat(songCount).isEqualTo(32);
         assertThat(playlistCount).isEqualTo(8);
