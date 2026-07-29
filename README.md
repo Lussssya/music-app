@@ -1,31 +1,40 @@
 # Music App
 
-Spring Boot backend for a music platform with catalog, listener activity, playlists, and recommendations.
+A full-stack music platform built with Spring Boot, React, PostgreSQL, and Flyway. Browse a seeded catalog, manage playlists, and get personalised recommendations through a session-authenticated API.
 
-## Local Setup
+## Highlights
 
-1. Start PostgreSQL:
+- Music discovery, search, library activity, playlists, and recommendations
+- Spring Security, PostgreSQL persistence, and versioned database migrations
+- React frontend with API and browser-journey tests
 
-   ```bash
-   docker compose up -d
-   ```
+## Run locally
 
-2. Run the app:
+You’ll need Java 21+, Maven 3.9+, Node.js 20+, pnpm 9+, and Docker Desktop.
 
-   ```bash
-   mvn spring-boot:run
-   ```
+```bash
+# Start PostgreSQL
+docker compose up -d
 
-Flyway runs the schema and seed migrations automatically on startup.
+# Start the API
+mvn spring-boot:run
+```
 
-## Frontend
-
-The React shell lives in `frontend/`.
+In a second terminal, start the frontend:
 
 ```bash
 cd frontend
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Vite serves the UI on `http://localhost:5173` and proxies `/api` requests to the Spring Boot backend on `http://localhost:8080`.
+Open [http://localhost:5173](http://localhost:5173). The API runs on [http://localhost:8080](http://localhost:8080), and Flyway loads the schema and sample data on startup.
+
+## Checks
+
+```bash
+mvn test
+cd frontend && pnpm test && pnpm build
+```
+
+Run `cd frontend && pnpm test:e2e` for the browser journey tests.
