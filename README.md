@@ -8,9 +8,21 @@ A full-stack music platform built with Spring Boot, React, PostgreSQL, and Flywa
 - Spring Security, PostgreSQL persistence, and versioned database migrations
 - React frontend with API and browser-journey tests
 
+## Screenshots
+
+<p>
+  <img src="assets/screenshots/login.png" alt="Login screen" width="49%" />
+  <img src="assets/screenshots/made_for_you.png" alt="Generated playlists screen" width="49%" />
+</p>
+<p>
+  <img src="assets/screenshots/catalog.png" alt="Catalog discovery screen" width="32%" />
+  <img src="assets/screenshots/playlists.png" alt="Playlist management screen" width="32%" />
+  <img src="assets/screenshots/recommendations.png" alt="Personalised recommendations screen" width="32%" />
+</p>
+
 ## Run locally
 
-You’ll need Java 21+, Maven 3.9+, Node.js 20+, pnpm 9+, and Docker Desktop.
+You’ll need Java 21+, Maven 3.9+, Node.js 22+, pnpm 10+, and Docker Desktop.
 
 ```bash
 # Start PostgreSQL
