@@ -30,6 +30,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers(disabledWithoutDocker = true)
 class PostgresMigrationIntegrationTest {
+    private static final int MAX_RECOMMENDATION_PAGE_SIZE = 25;
+
     @Container
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
             .withDatabaseName("music_app_test")
@@ -224,21 +226,21 @@ class PostgresMigrationIntegrationTest {
                 """, listener.id(), "Pop", new BigDecimal("10.0000"));
 
         final RecommendationService recommendationService = recommendationService(listener);
-        final BigDecimal baseScore = scoreFor(recommendationService.rebuildRecommendations(listener.username(), 100), 3L);
+        final BigDecimal baseScore = scoreFor(recommendationService.rebuildRecommendations(listener.username(), MAX_RECOMMENDATION_PAGE_SIZE), 3L);
 
         jdbcTemplate.update("""
                 INSERT INTO listener_following_performer (listener_id, performer_id)
                 VALUES (?, ?)
                 """, listener.id(), 1L);
 
-        final BigDecimal followedScore = scoreFor(recommendationService.rebuildRecommendations(listener.username(), 100), 3L);
+        final BigDecimal followedScore = scoreFor(recommendationService.rebuildRecommendations(listener.username(), MAX_RECOMMENDATION_PAGE_SIZE), 3L);
 
         jdbcTemplate.update("""
                 INSERT INTO listener_song_activity (listener_id, song_id, stream_count, skip_count, attitude)
                 VALUES (?, ?, 0, 0, ?::attitude)
                 """, listener.id(), 1L, "like");
 
-        final BigDecimal likedScore = scoreFor(recommendationService.rebuildRecommendations(listener.username(), 100), 3L);
+        final BigDecimal likedScore = scoreFor(recommendationService.rebuildRecommendations(listener.username(), MAX_RECOMMENDATION_PAGE_SIZE), 3L);
 
         assertThat(followedScore).isGreaterThan(baseScore);
         assertThat(likedScore).isGreaterThan(followedScore);
@@ -256,7 +258,7 @@ class PostgresMigrationIntegrationTest {
                 VALUES (?, ?, 0, 0, ?::attitude)
                 """, listener.id(), 1L, "dislike");
 
-        final List<RecommendationResponse> recommendations = recommendationService(listener).rebuildRecommendations(listener.username(), 100);
+        final List<RecommendationResponse> recommendations = recommendationService(listener).rebuildRecommendations(listener.username(), MAX_RECOMMENDATION_PAGE_SIZE);
 
         assertThat(recommendations).isNotEmpty();
         assertThat(recommendations).extracting(recommendation -> recommendation.song().songId()).doesNotContain(3L, 4L);
@@ -271,7 +273,7 @@ class PostgresMigrationIntegrationTest {
                        (?, ?, ?)
                 """, listener.id(), "Rock", new BigDecimal("100.0000"), listener.id(), "Pop", new BigDecimal("10.0000"));
 
-        final List<RecommendationResponse> recommendations = recommendationService(listener).rebuildRecommendations(listener.username(), 100);
+        final List<RecommendationResponse> recommendations = recommendationService(listener).rebuildRecommendations(listener.username(), MAX_RECOMMENDATION_PAGE_SIZE);
 
         assertThat(scoreFor(recommendations, 5L)).isGreaterThan(scoreFor(recommendations, 3L));
     }
@@ -292,7 +294,7 @@ class PostgresMigrationIntegrationTest {
                 VALUES (?, ?)
                 """, listener.id(), 2L);
 
-        final List<RecommendationResponse> recommendations = recommendationService(listener).rebuildRecommendations(listener.username(), 100);
+        final List<RecommendationResponse> recommendations = recommendationService(listener).rebuildRecommendations(listener.username(), MAX_RECOMMENDATION_PAGE_SIZE);
 
         assertThat(recommendations).isNotEmpty();
         assertThat(recommendations)
