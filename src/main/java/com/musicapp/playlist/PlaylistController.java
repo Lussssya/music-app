@@ -23,6 +23,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PlaylistController {
     private final PlaylistService playlistService;
+    private final GeneratedPlaylistService generatedPlaylistService;
 
     @GetMapping
     public List<PlaylistSummaryResponse> findPlaylists (@RequestParam(required = false) String search, @RequestParam(required = false) String type, @RequestParam(required = false) Long creatorId, @RequestParam(required = false) Long memberId) {
@@ -100,11 +101,11 @@ public class PlaylistController {
 
     @GetMapping("/generated")
     public List<GeneratedPlaylistSummaryResponse> getGeneratedPlaylists(Authentication authentication) {
-        return playlistService.getAvailableGeneratedPlaylists(authentication.getName());
+        return generatedPlaylistService.getAvailableGeneratedPlaylists(authentication.getName());
     }
 
     @GetMapping("/generated/{type}")
     public GeneratedPlaylistResponse generatePlaylist(Authentication authentication, @PathVariable GeneratedPlaylistType type) {
-        return playlistService.generatePlaylist(authentication.getName(), type);
+        return generatedPlaylistService.generatePlaylist(authentication.getName(), type);
     }
 }

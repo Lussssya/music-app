@@ -48,7 +48,7 @@ public class GeneratedPlaylist {
 
     @OneToMany(mappedBy = "playlist", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC")
-    private final List<GeneratedPlaylistSong> songs = new ArrayList<>();
+    private List<GeneratedPlaylistSong> songs = new ArrayList<>();
 
     public void refresh (Long listenerId, GeneratedPlaylistType playlistType, Instant generatedAt, List<Long> songIds) {
         this.listenerId = Objects.requireNonNull(listenerId, "listenerId should not be null");

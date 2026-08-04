@@ -5,6 +5,7 @@ import com.musicapp.catalog.dto.AlbumSummary;
 import com.musicapp.catalog.dto.PerformerSummary;
 import com.musicapp.catalog.dto.SongResponse;
 import com.musicapp.common.GlobalExceptionHandler;
+import com.musicapp.playlist.GeneratedPlaylistService;
 import com.musicapp.playlist.GeneratedPlaylistType;
 import com.musicapp.playlist.PlaylistController;
 import com.musicapp.playlist.PlaylistService;
@@ -48,15 +49,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PlaylistControllerTest {
     private MockMvc mockMvc;
     private PlaylistService playlistService;
+    private GeneratedPlaylistService generatedPlaylistService;
 
     @BeforeEach
     void setUp () {
         playlistService = mock(PlaylistService.class);
+        generatedPlaylistService = mock(GeneratedPlaylistService.class);
 
         final LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
 
-        mockMvc = MockMvcBuilders.standaloneSetup(new PlaylistController(playlistService))
+        mockMvc = MockMvcBuilders.standaloneSetup(new PlaylistController(playlistService, generatedPlaylistService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
@@ -286,7 +289,7 @@ class PlaylistControllerTest {
 
     @Test
     void getGeneratedPlaylistsReturnsAvailablePlaylists() throws Exception {
-        when(playlistService.getAvailableGeneratedPlaylists("musiclover42")).thenReturn(List.of(
+        when(generatedPlaylistService.getAvailableGeneratedPlaylists("musiclover42")).thenReturn(List.of(
                 new GeneratedPlaylistSummaryResponse(
                         GeneratedPlaylistType.DAILY_REWIND,
                         "Daily Rewind",
@@ -304,12 +307,12 @@ class PlaylistControllerTest {
                 .andExpect(jsonPath("$[0].description").value("Your most played songs today"))
                 .andExpect(jsonPath("$[0].available").value(true));
 
-        verify(playlistService).getAvailableGeneratedPlaylists("musiclover42");
+        verify(generatedPlaylistService).getAvailableGeneratedPlaylists("musiclover42");
     }
 
     @Test
     void generatePlaylistUsesTypeAndAuthentication() throws Exception {
-        when(playlistService.generatePlaylist("musiclover42", GeneratedPlaylistType.DAILY_REWIND)).thenReturn(generatedPlaylist());
+        when(generatedPlaylistService.generatePlaylist("musiclover42", GeneratedPlaylistType.DAILY_REWIND)).thenReturn(generatedPlaylist());
 
         mockMvc.perform(get("/api/playlists/generated/DAILY_REWIND")
                         .principal(authentication()))
@@ -318,7 +321,7 @@ class PlaylistControllerTest {
                 .andExpect(jsonPath("$.name").value("Daily Rewind"))
                 .andExpect(jsonPath("$.songs[0].title").value("Midnight Sun"));
 
-        verify(playlistService).generatePlaylist("musiclover42", GeneratedPlaylistType.DAILY_REWIND);
+        verify(generatedPlaylistService).generatePlaylist("musiclover42", GeneratedPlaylistType.DAILY_REWIND);
     }
 
     @Test

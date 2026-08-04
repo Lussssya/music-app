@@ -43,7 +43,7 @@ class GeneratedPlaylistCacheTest {
         SongResponse secondSong = song(4L, "Second");
         when(catalog.getSongsByIds(List.of(12L, 4L))).thenReturn(Map.of(12L, firstSong, 4L, secondSong));
 
-        PlaylistService service = new PlaylistService(listeners, null, jdbcTemplate, catalog, generatedPlaylists);
+        GeneratedPlaylistService service = new GeneratedPlaylistService(listeners, catalog, generatedPlaylists, jdbcTemplate);
         GeneratedPlaylistResponse response = service.generatePlaylist("musiclover42", GeneratedPlaylistType.DAILY_REWIND);
 
         assertThat(response.songs()).containsExactly(firstSong, secondSong);
