@@ -1,21 +1,33 @@
 package com.musicapp.playlist;
 
-import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 @Entity
 @Table(name = "generated_playlist", uniqueConstraints = @UniqueConstraint(columnNames = {"listener_id", "playlist_type"}))
 @Getter
-@Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class GeneratedPlaylist {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "generated_playlist_id")
@@ -36,14 +48,32 @@ public class GeneratedPlaylist {
 
     @OneToMany(mappedBy = "playlist", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC")
-    private List<GeneratedPlaylistSong> songs = new ArrayList<>();
+    private final List<GeneratedPlaylistSong> songs = new ArrayList<>();
 
-    public void addSong (GeneratedPlaylistSong song) {
-        songs.add(song);
-        song.setPlaylist(this);
+    public void refresh (Long listenerId, GeneratedPlaylistType playlistType, Instant generatedAt, List<Long> songIds) {
+        this.listenerId = Objects.requireNonNull(listenerId, "listenerId should not be null");
+        this.playlistType = Objects.requireNonNull(playlistType, "playlistType should not be null");
+        this.generatedAt = Objects.requireNonNull(generatedAt, "generatedAt should not be null");
+        this.expiresAt = generatedAt.plus(playlistType.getCacheDuration());
+
+        replaceSongs(songIds);
     }
 
-    public void clearSongs () {
+    public List<GeneratedPlaylistSong> getSongs () {
+        return Collections.unmodifiableList(songs);
+    }
+
+    private void replaceSongs (List<Long> songIds) {
+        Objects.requireNonNull(songIds, "songIds must not be null");
         songs.clear();
+
+        for (int i = 0; i < songIds.size(); i++) {
+            addSong(songIds.get(i), i + 1);
+        }
+    }
+
+    private void addSong (Long songId, int position) {
+        final GeneratedPlaylistSong song = new GeneratedPlaylistSong(this, songId, position);
+        songs.add(song);
     }
 }

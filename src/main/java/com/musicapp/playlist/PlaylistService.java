@@ -270,24 +270,20 @@ public class PlaylistService {
 
     @Scheduled(cron = "0 0 3 * * *")
     @Transactional
-    public void cleanupGeneratedPlaylists() {
+    public void cleanupGeneratedPlaylists () {
         generatedPlaylistRepository.deleteExpiredPlaylists();
     }
 
     @Transactional(readOnly = true)
     public List<GeneratedPlaylistSummaryResponse> getAvailableGeneratedPlaylists (String username) {
         final Long listenerId = requireListenerId(username);
-        final Map<GeneratedPlaylistType, GeneratedPlaylist> cachedPlaylists = generatedPlaylistRepository
-                .findAllByListenerId(listenerId).stream()
-                .collect(java.util.stream.Collectors.toMap(GeneratedPlaylist::getPlaylistType, Function.identity()));
+        final Map<GeneratedPlaylistType, GeneratedPlaylist> cachedPlaylists = generatedPlaylistRepository.findAllByListenerId(listenerId).stream().collect(java.util.stream.Collectors.toMap(GeneratedPlaylist::getPlaylistType, Function.identity()));
 
-        return Arrays.stream(GeneratedPlaylistType.values())
-                .map(type -> toGeneratedPlaylistSummary(type, cachedPlaylists.get(type)))
-                .toList();
+        return Arrays.stream(GeneratedPlaylistType.values()).map(type -> toGeneratedPlaylistSummary(type, cachedPlaylists.get(type))).toList();
     }
 
     @Transactional
-    public GeneratedPlaylistResponse generatePlaylist(String username, GeneratedPlaylistType type) {
+    public GeneratedPlaylistResponse generatePlaylist (String username, GeneratedPlaylistType type) {
         final Long listenerId = requireListenerId(username);
 
         GeneratedPlaylist playlist = generatedPlaylistRepository.findByListenerIdAndPlaylistType(listenerId, type).orElse(null);
@@ -308,9 +304,9 @@ public class PlaylistService {
             case REDISCOVER -> generateSongIds(listenerId, this::findRediscoverSongs);
         };
 
-        final GeneratedPlaylist savedPlaylist = savePlaylist(playlist, listenerId, type, songIds);
+        final GeneratedPlaylist refreshedPlaylist = refreshPlaylist(playlist, listenerId, type, songIds);
 
-        return buildPlaylistResponse(type, songIds, savedPlaylist.getGeneratedAt(), savedPlaylist.getExpiresAt());
+        return buildPlaylistResponse(type, songIds, refreshedPlaylist.getGeneratedAt(), refreshedPlaylist.getExpiresAt());
     }
 
     private boolean isExpired (GeneratedPlaylist playlist) {
@@ -330,33 +326,20 @@ public class PlaylistService {
         return completePlaylist(listenerId, songIds, GENERATED_PLAYLIST_SIZE);
     }
 
-    private GeneratedPlaylist savePlaylist(
-            GeneratedPlaylist playlist,
-            Long listenerId,
-            GeneratedPlaylistType type,
-            List<Long> songIds) {
+    private GeneratedPlaylist refreshPlaylist (GeneratedPlaylist playlist, Long listenerId, GeneratedPlaylistType type, List<Long> songIds) {
+        final boolean isNew = playlist == null;
 
-        if (playlist == null) {
+        if (isNew) {
             playlist = new GeneratedPlaylist();
         }
 
-        Instant now = Instant.now();
+        playlist.refresh(listenerId, type, Instant.now(), songIds);
 
-        playlist.setListenerId(listenerId);
-        playlist.setPlaylistType(type);
-        playlist.setGeneratedAt(now);
-        playlist.setExpiresAt(now.plus(type.getCacheDuration()));
-
-        playlist.getSongs().clear();
-
-        for (int i = 0; i < songIds.size(); i++) {
-            GeneratedPlaylistSong song = new GeneratedPlaylistSong();
-            song.setSongId(songIds.get(i));
-            song.setPosition(i + 1);
-            playlist.addSong(song);
+        if (isNew) {
+            return generatedPlaylistRepository.save(playlist);
         }
 
-        return generatedPlaylistRepository.save(playlist);
+        return playlist;
     }
 
     private GeneratedPlaylistResponse buildPlaylistResponse (GeneratedPlaylistType type, List<Long> songIds, Instant generatedAt, Instant expiresAt) {
@@ -369,14 +352,7 @@ public class PlaylistService {
     }
 
     private GeneratedPlaylistSummaryResponse toGeneratedPlaylistSummary (GeneratedPlaylistType type, GeneratedPlaylist playlist) {
-        return new GeneratedPlaylistSummaryResponse(
-                type,
-                type.getDisplayName(),
-                type.getDescription(),
-                playlist != null && !isExpired(playlist),
-                playlist == null ? null : playlist.getGeneratedAt(),
-                playlist == null ? null : playlist.getExpiresAt()
-        );
+        return new GeneratedPlaylistSummaryResponse(type, type.getDisplayName(), type.getDescription(), playlist != null && !isExpired(playlist), playlist == null ? null : playlist.getGeneratedAt(), playlist == null ? null : playlist.getExpiresAt());
     }
 
     private List<Long> completePlaylist (Long listenerId, List<Long> playlist, int targetSize) {
@@ -596,14 +572,7 @@ public class PlaylistService {
                 LIMIT ?
                 """;
 
-        return findListenerSongs(
-                listenerId,
-                sql,
-                Timestamp.from(inactivityCutoff),
-                FORGOTTEN_GEMS_MIN_STREAMS,
-                Timestamp.from(inactivityCutoff),
-                GENERATED_PLAYLIST_SIZE
-        );
+        return findListenerSongs(listenerId, sql, Timestamp.from(inactivityCutoff), FORGOTTEN_GEMS_MIN_STREAMS, Timestamp.from(inactivityCutoff), GENERATED_PLAYLIST_SIZE);
     }
 
     private List<Long> findRediscoverSongs (Long listenerId) {
@@ -623,15 +592,7 @@ public class PlaylistService {
                 LIMIT ?
                 """;
 
-        return findListenerSongs(
-                listenerId,
-                sql,
-                Timestamp.from(lookbackStart),
-                Timestamp.from(windowEnd),
-                REDISCOVER_MIN_STREAMS,
-                Timestamp.from(inactivityCutoff),
-                GENERATED_PLAYLIST_SIZE
-        );
+        return findListenerSongs(listenerId, sql, Timestamp.from(lookbackStart), Timestamp.from(windowEnd), REDISCOVER_MIN_STREAMS, Timestamp.from(inactivityCutoff), GENERATED_PLAYLIST_SIZE);
     }
 
     private List<Long> findTopSongs (Long listenerId, Instant from, Instant to, int limit) {
