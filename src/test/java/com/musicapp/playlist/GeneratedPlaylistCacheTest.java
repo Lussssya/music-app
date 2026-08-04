@@ -68,20 +68,13 @@ class GeneratedPlaylistCacheTest {
 
     private GeneratedPlaylist cachedPlaylist () {
         GeneratedPlaylist playlist = new GeneratedPlaylist();
-        playlist.setPlaylistType(GeneratedPlaylistType.DAILY_REWIND);
-        playlist.setGeneratedAt(Instant.parse("2026-07-25T10:00:00Z"));
-        playlist.setExpiresAt(Instant.now().plus(Duration.ofHours(1)));
-
-        playlist.addSong(cachedSong(12L, 1));
-        playlist.addSong(cachedSong(4L, 2));
+        playlist.refresh(
+                7L,
+                GeneratedPlaylistType.DAILY_REWIND,
+                Instant.now(),
+                List.of(12L, 4L)
+        );
         return playlist;
-    }
-
-    private GeneratedPlaylistSong cachedSong (Long songId, int position) {
-        GeneratedPlaylistSong song = new GeneratedPlaylistSong();
-        song.setSongId(songId);
-        song.setPosition(position);
-        return song;
     }
 
     private SongResponse song (Long id, String title) {
