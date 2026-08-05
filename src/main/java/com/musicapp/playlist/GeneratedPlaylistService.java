@@ -10,12 +10,10 @@ import com.musicapp.playlist.dto.GeneratedPlaylistSummaryResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.sql.Connection;
 import java.util.stream.Collectors;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -411,11 +409,5 @@ public class GeneratedPlaylistService {
         finalParams[finalParams.length - 1] = listenerId;
 
         return jdbcTemplate.queryForList(filteredSql, Long.class, finalParams);
-    }
-
-    @Scheduled(cron = "0 0 3 * * *")
-    @Transactional
-    public void cleanupGeneratedPlaylists () {
-        generatedPlaylistRepository.deleteExpiredPlaylists();
     }
 }
