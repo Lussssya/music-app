@@ -72,7 +72,7 @@ class GeneratedPlaylistConcurrencyIntegrationTest {
                 LocalDate.of(1995, 5, 15),
                 "United States"
         ));
-        final GeneratedPlaylistType playlistType = GeneratedPlaylistType.DAILY_REWIND;
+        final GeneratedPlaylistType playlistType = GeneratedPlaylistType.GENRE_MIX;
         final long lockKey = (listener.getId() << Byte.SIZE) | (playlistType.getLockCode() & 0xFFL);
 
         assertThat(generatedPlaylistRepository.findByListenerIdAndPlaylistType(listener.getId(), playlistType)).isEmpty();
