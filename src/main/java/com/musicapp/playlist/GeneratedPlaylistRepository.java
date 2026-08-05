@@ -14,11 +14,4 @@ public interface GeneratedPlaylistRepository extends JpaRepository<GeneratedPlay
     Optional<GeneratedPlaylist> findByListenerIdAndPlaylistType (Long listenerId, GeneratedPlaylistType playlistType);
 
     List<GeneratedPlaylist> findAllByListenerId (Long listenerId);
-
-    @Modifying
-    @Query("""
-                delete from GeneratedPlaylist
-                where expiresAt < CURRENT_TIMESTAMP
-            """)
-    void deleteExpiredPlaylists ();
 }
