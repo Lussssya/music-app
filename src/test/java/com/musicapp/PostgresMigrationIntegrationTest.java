@@ -5,6 +5,10 @@ import com.musicapp.catalog.DiscoveryService;
 import com.musicapp.catalog.dto.SearchSuggestionResponse;
 import com.musicapp.listener.Listener;
 import com.musicapp.listener.ListenerRepository;
+import com.musicapp.playlist.GeneratedPlaylist;
+import com.musicapp.playlist.GeneratedPlaylistRepository;
+import com.musicapp.playlist.GeneratedPlaylistService;
+import com.musicapp.playlist.GeneratedPlaylistType;
 import com.musicapp.recommendation.RecommendationService;
 import com.musicapp.recommendation.dto.RecommendationResponse;
 import org.flywaydb.core.Flyway;
@@ -12,8 +16,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -21,12 +27,22 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.lang.reflect.Proxy;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @Testcontainers(disabledWithoutDocker = true)
 class PostgresMigrationIntegrationTest {
@@ -300,6 +316,75 @@ class PostgresMigrationIntegrationTest {
         assertThat(recommendations)
                 .extracting(recommendation -> recommendation.song().songId())
                 .doesNotContain(5L, 6L, 7L, 8L, 15L);
+    }
+
+    @Test
+    void concurrentGeneratedPlaylistRequestsForTheSameListenerAndTypeAreSerialized () throws Exception {
+        final DataSource dataSource = dataSource();
+        final JdbcTemplate lockingJdbcTemplate = new JdbcTemplate(dataSource);
+        final TransactionTemplate transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        final GeneratedPlaylistRepository generatedPlaylists = mock(GeneratedPlaylistRepository.class);
+        final CatalogService catalog = mock(CatalogService.class);
+        final GeneratedPlaylist cachedPlaylist = mock(GeneratedPlaylist.class);
+
+        when(cachedPlaylist.getExpiresAt()).thenReturn(Instant.now().plusSeconds(60));
+        when(cachedPlaylist.getPlaylistType()).thenReturn(GeneratedPlaylistType.DAILY_REWIND);
+        when(cachedPlaylist.getGeneratedAt()).thenReturn(Instant.now());
+        when(cachedPlaylist.getSongs()).thenReturn(List.of());
+        when(catalog.getSongsByIds(List.of())).thenReturn(Map.of());
+
+        final CountDownLatch firstCacheReadStarted = new CountDownLatch(1);
+        final CountDownLatch releaseFirstRequest = new CountDownLatch(1);
+        final CountDownLatch secondTransactionStarted = new CountDownLatch(1);
+        final CountDownLatch secondCacheReadStarted = new CountDownLatch(1);
+        final AtomicInteger cacheReadCount = new AtomicInteger();
+
+        when(generatedPlaylists.findByListenerIdAndPlaylistType(1L, GeneratedPlaylistType.DAILY_REWIND))
+                .thenAnswer(invocation -> {
+                    if (cacheReadCount.incrementAndGet() == 1) {
+                        firstCacheReadStarted.countDown();
+                        assertThat(releaseFirstRequest.await(5, TimeUnit.SECONDS)).isTrue();
+                    } else {
+                        secondCacheReadStarted.countDown();
+                    }
+
+                    return Optional.of(cachedPlaylist);
+                });
+
+        final GeneratedPlaylistService service = new GeneratedPlaylistService(
+                listenerRepository(1L),
+                catalog,
+                generatedPlaylists,
+                lockingJdbcTemplate
+        );
+        final ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            final Future<?> firstRequest = executor.submit(() -> transactions.executeWithoutResult(
+                    status -> service.generatePlaylist("rockfan88", GeneratedPlaylistType.DAILY_REWIND)
+            ));
+            assertThat(firstCacheReadStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            final Future<?> secondRequest = executor.submit(() -> transactions.executeWithoutResult(status -> {
+                secondTransactionStarted.countDown();
+                service.generatePlaylist("rockfan88", GeneratedPlaylistType.DAILY_REWIND);
+            }));
+            assertThat(secondTransactionStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(secondCacheReadStarted.await(300, TimeUnit.MILLISECONDS))
+                    .as("the second request must wait on the advisory lock")
+                    .isFalse();
+
+            releaseFirstRequest.countDown();
+            firstRequest.get(5, TimeUnit.SECONDS);
+            secondRequest.get(5, TimeUnit.SECONDS);
+
+            assertThat(secondCacheReadStarted.getCount()).isZero();
+            assertThat(cacheReadCount.get()).isEqualTo(2);
+        } finally {
+            releaseFirstRequest.countDown();
+            executor.shutdownNow();
+        }
     }
 
     private static DataSource dataSource () {

@@ -8,12 +8,14 @@ import com.musicapp.listener.ListenerRepository;
 import com.musicapp.playlist.dto.GeneratedPlaylistResponse;
 import com.musicapp.playlist.dto.GeneratedPlaylistSummaryResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.util.stream.Collectors;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -37,6 +39,7 @@ public class GeneratedPlaylistService {
     private static final long REDISCOVER_WINDOW_END_DAYS = 180;
     private static final long REDISCOVER_INACTIVITY_DAYS = 30;
     private static final int REDISCOVER_MIN_STREAMS = 5;
+    private static final int GENERATED_PLAYLIST_TYPE_BITS = 8;
 
     private final ListenerRepository listenerRepository;
     private final CatalogService catalogService;
@@ -58,6 +61,8 @@ public class GeneratedPlaylistService {
     @Transactional
     public GeneratedPlaylistResponse generatePlaylist (String username, GeneratedPlaylistType type) {
         final Long listenerId = requireListenerId(username);
+
+        acquireGeneratedPlaylistLock(listenerId, type);
 
         GeneratedPlaylist playlist = generatedPlaylistRepository.findByListenerIdAndPlaylistType(listenerId, type).orElse(null);
 
@@ -84,6 +89,19 @@ public class GeneratedPlaylistService {
 
     private Long requireListenerId (String username) {
         return listenerRepository.findByUsername(username).map(Listener::getId).orElseThrow(() -> new NotFoundException("Listener not found: " + username));
+    }
+
+    private void acquireGeneratedPlaylistLock (Long listenerId, GeneratedPlaylistType type) {
+        final long lockKey = (listenerId << GENERATED_PLAYLIST_TYPE_BITS) | (type.getLockCode() & 0xFFL);
+
+        jdbcTemplate.execute((ConnectionCallback<Void>) connection -> {
+            try (var statement = connection.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {
+                statement.setLong(1, lockKey);
+                statement.execute();
+            }
+
+            return null;
+        });
     }
 
     private boolean isNotExpired (GeneratedPlaylist playlist) {

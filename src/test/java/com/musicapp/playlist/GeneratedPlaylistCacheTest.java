@@ -8,6 +8,7 @@ import com.musicapp.listener.Listener;
 import com.musicapp.listener.ListenerRepository;
 import com.musicapp.playlist.dto.GeneratedPlaylistResponse;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Duration;
@@ -22,7 +23,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class GeneratedPlaylistCacheTest {
@@ -50,7 +50,7 @@ class GeneratedPlaylistCacheTest {
         assertThat(response.generatedAt()).isEqualTo(cachedPlaylist.getGeneratedAt());
         assertThat(response.expiresAt()).isEqualTo(cachedPlaylist.getExpiresAt());
         verify(generatedPlaylists, never()).save(org.mockito.ArgumentMatchers.any());
-        verifyNoInteractions(jdbcTemplate);
+        verify(jdbcTemplate).execute(org.mockito.ArgumentMatchers.any(ConnectionCallback.class));
     }
 
     @Test
@@ -64,6 +64,14 @@ class GeneratedPlaylistCacheTest {
         assertThat(GeneratedPlaylistType.HIDDEN_FAVOURITES.getCacheDuration()).isEqualTo(Duration.ofDays(7));
         assertThat(GeneratedPlaylistType.GENRE_MIX.getCacheDuration()).isEqualTo(Duration.ofDays(7));
         assertThat(GeneratedPlaylistType.REDISCOVER.getCacheDuration()).isEqualTo(Duration.ofDays(7));
+    }
+
+    @Test
+    void usesStableUniqueLockCodesForEachPlaylistType () {
+        assertThat(List.of(GeneratedPlaylistType.values()))
+                .extracting(GeneratedPlaylistType::getLockCode)
+                .containsExactly(1, 2, 3, 4, 5, 6, 7, 8, 9)
+                .doesNotHaveDuplicates();
     }
 
     private GeneratedPlaylist cachedPlaylist () {
