@@ -10,6 +10,7 @@ import com.musicapp.playlist.GeneratedPlaylistType;
 import com.musicapp.playlist.PlaylistController;
 import com.musicapp.playlist.PlaylistService;
 import com.musicapp.playlist.PlaylistType;
+import com.musicapp.playlist.PlaylistTypeConverter;
 import com.musicapp.playlist.dto.*;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.format.support.DefaultFormattingConversionService;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
@@ -58,10 +60,13 @@ class PlaylistControllerTest {
 
         final LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
+        final DefaultFormattingConversionService conversionService = new DefaultFormattingConversionService();
+        conversionService.addConverter(new PlaylistTypeConverter());
 
         mockMvc = MockMvcBuilders.standaloneSetup(new PlaylistController(playlistService, generatedPlaylistService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
+                .setConversionService(conversionService)
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
                         Jackson2ObjectMapperBuilder.json()
                                 .featuresToDisable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
