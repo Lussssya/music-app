@@ -40,6 +40,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -89,6 +90,17 @@ class PlaylistControllerTest {
                 .andExpect(jsonPath("$[0].songCount").value(2));
 
         verify(playlistService).findPlaylists("focus", PlaylistType.PUBLIC, 12L, 5L);
+    }
+
+    @Test
+    void findPlaylistsRejectsUnknownType () throws Exception {
+        mockMvc.perform(get("/api/playlists").param("type", "opaaa"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.messages[0]").value("Invalid value for type: opaaa"));
+
+        verifyNoInteractions(playlistService);
     }
 
     @Test
@@ -156,7 +168,70 @@ class PlaylistControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Bad Request"))
-                .andExpect(jsonPath("$.messages").isArray());
+                .andExpect(jsonPath("$.messages[0]").value("must not be blank"));
+    }
+
+    @Test
+    void createPlaylistRejectsTooLongName () throws Exception {
+        final String tooLongName = "a".repeat(129);
+
+        mockMvc.perform(post("/api/playlists")
+                        .principal(authentication())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "name": "%s",
+                              "type": "public"
+                            }
+                            """.formatted(tooLongName)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.messages[0]").value("name size must be between 0 and 128"));
+
+        verifyNoInteractions(playlistService);
+    }
+
+    @Test
+    void createPlaylistRejectsTooLongPlaylistUrl () throws Exception {
+        final String tooLongUrl = "https://example.com/" + "a".repeat(2049);
+
+        mockMvc.perform(post("/api/playlists")
+                        .principal(authentication())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "New Cool Playlist",
+                                  "type": "public",
+                                  "playlistUrl": "%s"
+                                }
+                                """.formatted(tooLongUrl)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.messages[0]").value("playlistUrl must not exceed 2048 characters"));
+
+        verifyNoInteractions(playlistService);
+    }
+
+    @Test
+    void createPlaylistRejectsTooLongPictureUrl () throws Exception {
+        final String tooLongUrl = "https://example.com/" + "a".repeat(2049);
+
+        mockMvc.perform(post("/api/playlists")
+                        .principal(authentication())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "New Cool Playlist",
+                                  "type": "public",
+                                  "pictureUrl": "%s"
+                                }
+                                """.formatted(tooLongUrl)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.messages[0]").value("pictureUrl must not exceed 2048 characters"));
+
+        verifyNoInteractions(playlistService);
     }
 
     @Test
@@ -195,6 +270,46 @@ class PlaylistControllerTest {
 
         verify(playlistService).updatePlaylist("musiclover42", 1L,
                 new UpdatePlaylistRequest("Updated", PlaylistType.SHARED, null, null));
+    }
+
+    @Test
+    void updatePlaylistRejectsTooLongPlaylistUrl () throws Exception {
+        final String tooLongUrl = "https://example.com/" + "a".repeat(2049);
+
+        mockMvc.perform(put("/api/playlists/1")
+                        .principal(authentication())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Updated Playlist",
+                                  "type": "shared",
+                                  "playlistUrl": "%s"
+                                }
+                                """.formatted(tooLongUrl)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.messages[0]").value("playlistUrl must not exceed 2048 characters"));
+
+        verifyNoInteractions(playlistService);
+    }
+
+    @Test
+    void updatePlaylistRejectsTooLongPictureUrl () throws Exception {
+        final String tooLongUrl = "https://example.com/" + "a".repeat(2049);
+
+        mockMvc.perform(put("/api/playlists/1")
+                        .principal(authentication())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "name": "Updated Playlist",
+                              "type": "shared",
+                              "pictureUrl": "%s"
+                            }
+                            """.formatted(tooLongUrl)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.messages[0]").value("pictureUrl must not exceed 2048 characters"));
+
+        verifyNoInteractions(playlistService);
     }
 
     @Test

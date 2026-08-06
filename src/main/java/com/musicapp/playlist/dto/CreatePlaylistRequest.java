@@ -6,9 +6,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public record CreatePlaylistRequest(
-        @NotBlank @Size(max = 128) String name,
+        @NotBlank(message = "must not be blank") @Size(max = 128) String name,
         @NotNull PlaylistType type,
-        String playlistUrl,
-        String pictureUrl
+        @Size(max = 2048, message = "must not exceed 2048 characters") String playlistUrl,
+        @Size(max = 2048, message = "must not exceed 2048 characters") String pictureUrl
 ) {
 }
