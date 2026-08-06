@@ -131,6 +131,25 @@ class PlaylistControllerTest {
     }
 
     @Test
+    void createPlaylistRejectsMalformedJson () throws Exception {
+        mockMvc.perform(post("/api/playlists")
+                        .principal(authentication())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "name": "My Playlist",
+                              "type": "public",
+                            }
+                            """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.messages[0]").value("Malformed or unreadable request body."));
+
+        verifyNoInteractions(playlistService);
+    }
+
+    @Test
     void createPlaylistReturnsCreatedPlaylist () throws Exception {
         when(playlistService.createPlaylist(eq("musiclover42"), any(CreatePlaylistRequest.class))).thenReturn(playlist());
 
