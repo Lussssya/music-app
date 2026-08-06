@@ -160,15 +160,18 @@ class PlaylistControllerTest {
                         .principal(authentication())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {
-                                  "name": "",
-                                  "type": null
-                                }
-                                """))
+                            {
+                              "name": "",
+                              "type": "public"
+                            }
+                            """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.error").value("Bad Request"))
-                .andExpect(jsonPath("$.messages[0]").value("must not be blank"));
+                .andExpect(jsonPath("$.messages[0]")
+                        .value("name must not be blank"));
+
+        verifyNoInteractions(playlistService);
     }
 
     @Test
@@ -185,7 +188,7 @@ class PlaylistControllerTest {
                             }
                             """.formatted(tooLongName)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.messages[0]").value("name size must be between 0 and 128"));
+                .andExpect(jsonPath("$.messages[0]").value("name must not exceed 128 characters"));
 
         verifyNoInteractions(playlistService);
     }
