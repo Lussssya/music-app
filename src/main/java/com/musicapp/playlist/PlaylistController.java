@@ -26,8 +26,8 @@ public class PlaylistController {
     private final GeneratedPlaylistService generatedPlaylistService;
 
     @GetMapping
-    public List<PlaylistSummaryResponse> findPlaylists (@RequestParam(required = false) String search, @RequestParam(required = false) String type, @RequestParam(required = false) Long creatorId, @RequestParam(required = false) Long memberId) {
-        return playlistService.findPlaylists(search, parsePlaylistType(type), creatorId, memberId);
+    public List<PlaylistSummaryResponse> findPlaylists (@RequestParam(required = false) String search, @RequestParam(required = false) PlaylistType type, @RequestParam(required = false) Long creatorId, @RequestParam(required = false) Long memberId) {
+        return playlistService.findPlaylists(search, type, creatorId, memberId);
     }
 
     @GetMapping("/{playlistId}")
@@ -90,13 +90,6 @@ public class PlaylistController {
     @DeleteMapping("/{playlistId}/songs/{songId}/vote")
     public PlaylistResponse removeSongVote (Authentication authentication, @PathVariable Long playlistId, @PathVariable Long songId) {
         return playlistService.removeSongVote(authentication.getName(), playlistId, songId);
-    }
-
-    private PlaylistType parsePlaylistType (String type) {
-        if (type == null || type.isBlank()) {
-            return null;
-        }
-        return PlaylistType.fromDbValue(type.trim());
     }
 
     @GetMapping("/generated")
