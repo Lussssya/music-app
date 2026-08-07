@@ -268,7 +268,7 @@ class ListenerActionControllerTest {
         private Page<ListeningHistoryResponse> historyPage;
 
         FakeListenerActionService () {
-            super(null, null, null, null, null, null);
+            super(null, null, null, null, null);
         }
 
         @Override

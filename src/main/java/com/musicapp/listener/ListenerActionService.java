@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -30,7 +31,6 @@ public class ListenerActionService {
     private final SongRepository songRepository;
     private final PerformerRepository performerRepository;
     private final JdbcTemplate jdbcTemplate;
-    private final CatalogMapper catalogMapper;
     private final CatalogService catalogService;
 
     @Transactional(readOnly = true)
@@ -48,7 +48,9 @@ public class ListenerActionService {
             return List.of();
         }
 
-        return songRepository.findByIdInOrderByTitleAsc(songIds).stream().map(catalogMapper::toSongResponse).toList();
+        final Map<Long, SongResponse> songsById = catalogService.getSongsByIds(songIds);
+
+        return songIds.stream().map(songsById::get).filter(Objects::nonNull).toList();
     }
 
     @Transactional(readOnly = true)
@@ -222,11 +224,7 @@ public class ListenerActionService {
         return params;
     }
 
-    private record HistoryRow(
-            Long songId,
-            Instant playedAt,
-            boolean skipped
-    ){
+    private record HistoryRow(Long songId, Instant playedAt, boolean skipped) {
     }
 
     @Transactional
@@ -234,12 +232,10 @@ public class ListenerActionService {
         final Long listenerId = requireListenerId(username);
 
         jdbcTemplate.update("""
-            DELETE
-            FROM song_stream
-            WHERE listener_id = ?
-            """,
-                listenerId
-        );
+                DELETE
+                FROM song_stream
+                WHERE listener_id = ?
+                """, listenerId);
     }
 
     @Transactional(readOnly = true)
