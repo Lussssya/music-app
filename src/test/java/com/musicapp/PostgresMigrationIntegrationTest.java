@@ -2,8 +2,11 @@ package com.musicapp;
 
 import com.musicapp.catalog.CatalogService;
 import com.musicapp.catalog.DiscoveryService;
+import com.musicapp.catalog.SongRepository;
 import com.musicapp.catalog.dto.SearchSuggestionResponse;
+import com.musicapp.catalog.dto.SongResponse;
 import com.musicapp.listener.Listener;
+import com.musicapp.listener.ListenerActionService;
 import com.musicapp.listener.ListenerRepository;
 import com.musicapp.recommendation.RecommendationService;
 import com.musicapp.recommendation.dto.RecommendationResponse;
@@ -23,10 +26,13 @@ import java.math.BigDecimal;
 import java.lang.reflect.Proxy;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @Testcontainers(disabledWithoutDocker = true)
 class PostgresMigrationIntegrationTest {
@@ -102,6 +108,42 @@ class PostgresMigrationIntegrationTest {
 
         assertThat(attitude).isEqualTo("not_interested");
         assertThat(playlistType).isEqualTo("shared");
+    }
+
+    @Test
+    void favoriteSongsStayOrderedByLikeTimeAfterStreaming () {
+        final TestListener listener = createListener("favorite_order");
+        jdbcTemplate.update("""
+                INSERT INTO listener_song_activity (
+                    listener_id,
+                    song_id,
+                    attitude,
+                    attitude_updated_at,
+                    updated_at
+                )
+                VALUES
+                    (?, 1, 'like'::attitude, TIMESTAMPTZ '2026-01-01 00:00:00Z', TIMESTAMPTZ '2026-01-01 00:00:00Z'),
+                    (?, 2, 'like'::attitude, TIMESTAMPTZ '2026-01-02 00:00:00Z', TIMESTAMPTZ '2026-01-02 00:00:00Z')
+                """, listener.id(), listener.id());
+
+        final SongResponse first = songResponse(2L, "Most recently liked");
+        final SongResponse second = songResponse(1L, "Most recently streamed");
+        final SongRepository songRepository = mock(SongRepository.class);
+        final CatalogService catalogService = mock(CatalogService.class);
+        when(songRepository.existsById(1L)).thenReturn(true);
+        when(catalogService.getSongsByIds(List.of(2L, 1L))).thenReturn(Map.of(1L, second, 2L, first));
+
+        final ListenerActionService listenerActionService = new ListenerActionService(
+                listenerRepository(listener.id(), listener.username()),
+                songRepository,
+                null,
+                jdbcTemplate,
+                catalogService
+        );
+
+        listenerActionService.streamSong(listener.username(), 1L, false);
+
+        assertThat(listenerActionService.getFavoriteSongs(listener.username())).containsExactly(first, second);
     }
 
     @Test
@@ -339,6 +381,10 @@ class PostgresMigrationIntegrationTest {
                 .findFirst()
                 .map(RecommendationResponse::score)
                 .orElseThrow();
+    }
+
+    private SongResponse songResponse (Long songId, String title) {
+        return new SongResponse(songId, title, null, null, null, null, null, null, List.of());
     }
 
     private ListenerRepository listenerRepository (Long listenerId) {

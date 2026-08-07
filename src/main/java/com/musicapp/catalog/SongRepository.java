@@ -38,7 +38,7 @@ public interface SongRepository extends JpaRepository<Song, Long> {
     Page<Song> findByAlbumIdOrderByReleaseDateDescTitle (Pageable pageable, Long albumId);
 
     @EntityGraph(attributePaths = {"mainPerformer", "album", "genres"})
-    List<Song> findByIdInOrderByTitleAsc (List<Long> songIds);
+    List<Song> findByIdIn (List<Long> songIds);
 
     @EntityGraph(attributePaths = {"mainPerformer", "album", "genres"})
     Page<Song> findAllByOrderByReleaseDateDescTitle(Pageable pageable);

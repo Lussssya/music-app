@@ -126,6 +126,6 @@ public class CatalogService {
             return Map.of();
         }
 
-        return songRepository.findByIdInOrderByTitleAsc(songIds).stream().collect(Collectors.toMap(Song::getId, catalogMapper::toSongResponse));
+        return songRepository.findByIdIn(songIds).stream().collect(Collectors.toMap(Song::getId, catalogMapper::toSongResponse));
     }
 }

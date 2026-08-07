@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -30,7 +31,6 @@ public class ListenerActionService {
     private final SongRepository songRepository;
     private final PerformerRepository performerRepository;
     private final JdbcTemplate jdbcTemplate;
-    private final CatalogMapper catalogMapper;
     private final CatalogService catalogService;
 
     @Transactional(readOnly = true)
@@ -41,14 +41,16 @@ public class ListenerActionService {
                 FROM listener_song_activity
                 WHERE listener_id = ?
                   AND attitude = 'like'::attitude
-                ORDER BY updated_at DESC
+                ORDER BY attitude_updated_at DESC, song_id DESC
                 """, Long.class, listenerId);
 
         if (songIds.isEmpty()) {
             return List.of();
         }
 
-        return songRepository.findByIdInOrderByTitleAsc(songIds).stream().map(catalogMapper::toSongResponse).toList();
+        final Map<Long, SongResponse> songsById = catalogService.getSongsByIds(songIds);
+
+        return songIds.stream().map(songsById::get).filter(Objects::nonNull).toList();
     }
 
     @Transactional(readOnly = true)
@@ -83,11 +85,12 @@ public class ListenerActionService {
         final Long listenerId = requireListenerIdForExistingSong(username, songId);
 
         jdbcTemplate.update("""
-                INSERT INTO listener_song_activity (listener_id, song_id, attitude, updated_at)
-                VALUES (?, ?, ?::attitude, CURRENT_TIMESTAMP)
+                INSERT INTO listener_song_activity (listener_id, song_id, attitude, updated_at, attitude_updated_at)
+                VALUES (?, ?, ?::attitude, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (listener_id, song_id) DO UPDATE SET
                     attitude = EXCLUDED.attitude,
-                    updated_at = CURRENT_TIMESTAMP
+                    updated_at = CURRENT_TIMESTAMP,
+                    attitude_updated_at = CURRENT_TIMESTAMP
                 """, listenerId, songId, attitude.name());
         markRecommendationsStale(listenerId);
 
@@ -101,7 +104,8 @@ public class ListenerActionService {
         jdbcTemplate.update("""
                 UPDATE listener_song_activity
                 SET attitude = NULL,
-                    updated_at = CURRENT_TIMESTAMP
+                    updated_at = CURRENT_TIMESTAMP,
+                    attitude_updated_at = CURRENT_TIMESTAMP
                 WHERE listener_id = ?
                   AND song_id = ?
                 """, listenerId, songId);
@@ -222,11 +226,7 @@ public class ListenerActionService {
         return params;
     }
 
-    private record HistoryRow(
-            Long songId,
-            Instant playedAt,
-            boolean skipped
-    ){
+    private record HistoryRow(Long songId, Instant playedAt, boolean skipped) {
     }
 
     @Transactional
@@ -234,12 +234,10 @@ public class ListenerActionService {
         final Long listenerId = requireListenerId(username);
 
         jdbcTemplate.update("""
-            DELETE
-            FROM song_stream
-            WHERE listener_id = ?
-            """,
-                listenerId
-        );
+                DELETE
+                FROM song_stream
+                WHERE listener_id = ?
+                """, listenerId);
     }
 
     @Transactional(readOnly = true)
